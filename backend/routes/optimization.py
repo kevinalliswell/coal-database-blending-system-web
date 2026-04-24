@@ -3,6 +3,7 @@
 
 import json
 import logging
+import math
 import os
 from datetime import datetime
 
@@ -16,6 +17,16 @@ from app.utils.validation import validate_optimization_params
 logger = logging.getLogger(__name__)
 
 optimization_bp = Blueprint('optimization', __name__)
+
+
+def _sanitize_json_value(value):
+    if isinstance(value, dict):
+        return {key: _sanitize_json_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_json_value(item) for item in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    return value
 
 
 def _build_algorithm_params(constraints, selected_coal_ids):
@@ -99,11 +110,11 @@ def _build_api_result(coal_names, algorithm_result, time_taken):
         'timestamp': timestamp,
     }
 
-    return {
+    return _sanitize_json_value({
         'status': algorithm_result.get('status', 'success'),
         'message': algorithm_result.get('message', '优化计算完成'),
         'result': result_payload,
-    }
+    })
 
 
 @optimization_bp.route('/optimization', methods=['POST'])
@@ -170,9 +181,9 @@ def run_optimization():
                 f"optimization_{datetime.now().strftime('%Y%m%d%H%M%S')}.json",
             )
             with open(history_file, 'w', encoding='utf-8') as file:
-                json.dump(payload, file, ensure_ascii=False, indent=2)
+                json.dump(payload, file, ensure_ascii=False, indent=2, allow_nan=False)
 
-        return jsonify(payload)
+        return jsonify(_sanitize_json_value(payload))
 
     except ValueError as exc:
         logger.error('优化计算参数错误: %s', exc)
@@ -201,7 +212,7 @@ def get_optimization_history():
                 date_obj = datetime.strptime(timestamp, '%Y%m%d%H%M%S')
                 formatted_date = date_obj.strftime('%Y-%m-%d %H:%M:%S')
 
-                history_list.append({
+                history_list.append(_sanitize_json_value({
                     'id': timestamp,
                     'date': formatted_date,
                     'coal_names': result.get('coal_names', []),
@@ -213,11 +224,11 @@ def get_optimization_history():
                         'is_feasible',
                         result.get('constraints_satisfied', False),
                     ),
-                })
+                }))
             except Exception as exc:
                 logger.error('读取历史记录文件 %s 失败: %s', filename, exc)
 
-        return jsonify({'status': 'success', 'data': history_list})
+        return jsonify(_sanitize_json_value({'status': 'success', 'data': history_list}))
     except Exception as exc:
         logger.error('获取优化历史记录失败: %s', exc)
         return jsonify({'status': 'error', 'message': f'获取优化历史记录失败: {exc}'}), 500
@@ -234,7 +245,7 @@ def get_optimization_history_detail(history_id):
         with open(history_file, 'r', encoding='utf-8') as file:
             history_data = json.load(file)
 
-        return jsonify({'status': 'success', 'data': history_data})
+        return jsonify(_sanitize_json_value({'status': 'success', 'data': history_data}))
     except Exception as exc:
         logger.error('获取优化历史记录详情失败: %s', exc)
         return jsonify({'status': 'error', 'message': f'获取优化历史记录详情失败: {exc}'}), 500
