@@ -39,6 +39,12 @@ def serve_image(filename: str):
     return send_from_directory(current_app.config["STATIC_IMAGES_DIR"], filename)
 
 
+@page_bp.get("/favicon.ico")
+def favicon():
+    """Serve the project favicon from the static directory."""
+    return current_app.send_static_file("favicon.ico")
+
+
 @page_bp.get("/health")
 def health_check():
     """健康检查接口。"""
