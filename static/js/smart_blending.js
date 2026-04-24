@@ -536,16 +536,28 @@ async function startOptimization(button) {
         const result = await response.json();
         console.log('解析的JSON结果:', result);
 
-        if (result.status === 'success') {
-            console.log('优化成功，开始显示结果');
+        if (['success', 'no_feasible_solution', 'search_failed'].includes(result.status)) {
+            console.log('优化请求返回:', result.status, result.message);
             displayOptimizationResults(result.result);
-            showSuccessMessage('优化计算完成！');
-            
-            // 启用导出和分享按钮
-            document.getElementById('exportReportBtn').disabled = false;
-            document.getElementById('copyShareResultBtn').disabled = false;
+
+            const allowExport = result.status === 'success';
+            document.getElementById('exportReportBtn').disabled = !allowExport;
+            document.getElementById('copyShareResultBtn').disabled = !allowExport;
+
+            if (result.status === 'success') {
+                showSuccessMessage('喷煤性价比优化完成！');
+            } else if (result.status === 'no_feasible_solution') {
+                lastOptimizationResult = null;
+                showWarningMessage(result.message || '当前约束下不存在可行混煤方案');
+            } else {
+                lastOptimizationResult = null;
+                showWarningMessage(result.message || '遗传算法未能生成满足约束的解');
+            }
         } else {
             console.error('优化失败:', result.message);
+            lastOptimizationResult = null;
+            document.getElementById('exportReportBtn').disabled = true;
+            document.getElementById('copyShareResultBtn').disabled = true;
             showErrorMessage('优化计算失败: ' + result.message);
         }
 
@@ -572,56 +584,57 @@ function getAlgorithmParameters() {
         constraint_penalty_factor: parseFloat(document.getElementById('constraintPenaltyFactor')?.value || 1500),
         parallel_workers: parseInt(document.getElementById('parallelWorkers')?.value || 4),
         diversity_factor: parseFloat(document.getElementById('diversityFactor')?.value || 0.1),
-        adaptive_mutation: document.getElementById('adaptiveMutation')?.checked || true,
-        parallel_computing: document.getElementById('parallelComputing')?.checked || true
+        adaptive_mutation: document.getElementById('adaptiveMutation')?.checked ?? true,
+        parallel_computing: document.getElementById('parallelComputing')?.checked ?? true
     };
 }
 
 // 显示优化结果
 function displayOptimizationResults(data) {
     console.log('接收到的优化结果数据:', data);
-    
-    // 保存优化结果用于导出
-    lastOptimizationResult = data;
-    
-    // 构建配比数据
+
+    if (data?.is_feasible) {
+        lastOptimizationResult = data;
+    }
+
     const ratios = [];
-    for (let i = 0; i < data.coal_names.length; i++) {
+    const coalNames = Array.isArray(data?.coal_names) ? data.coal_names : [];
+    const optimalRatios = Array.isArray(data?.optimal_ratios) ? data.optimal_ratios : [];
+    for (let i = 0; i < coalNames.length; i++) {
         ratios.push({
-            coal_name: data.coal_names[i],
-            percentage: data.optimal_ratios[i] * 100  // 转换为百分比
+            coal_name: coalNames[i],
+            percentage: (optimalRatios[i] || 0) * 100
         });
     }
-    
-    // 构建性能指标数据
-    const performance = {
-        total_cost: data.total_price,
-        heat_value: data.total_heat,
-        ash_content: data.total_ash,
-        fixed_carbon: data.total_fixed_carbon,
-        volatile_matter: data.total_volatile,
-        sulfur_content: data.total_sulfur,
-        performance_ratio: data.performance_price_ratio
-    };
-    
-    // 构建算法信息数据
-    const algorithmInfo = {
-        iterations: data.iterations,
-        time_taken: data.time_taken,
-        fitness_value: data.fitness_value
-    };
-    
-    // 更新配比表格
+
     updateRatioTable(ratios);
-    
-    // 更新性能指标
-    updatePerformanceIndicators(performance);
-    
-    // 更新算法信息
-    updateAlgorithmInfo(algorithmInfo);
-    
-    // 更新图表（传递原始数据）
+    updatePerformanceIndicators(data);
+    updateAlgorithmInfo(data);
+    renderConstraintStatus(data);
     updateCharts(data);
+}
+
+function formatNumeric(value, formatter, fallback = '--') {
+    return Number.isFinite(value) ? formatter(value) : fallback;
+}
+
+function toViolationText(violation) {
+    if (!violation) {
+        return '约束诊断不可用';
+    }
+    if (typeof violation === 'string') {
+        return violation;
+    }
+    if (violation.message) {
+        return violation.message;
+    }
+    if (violation.label && violation.detail) {
+        return `${violation.label}: ${violation.detail}`;
+    }
+    if (violation.label && Number.isFinite(violation.actual) && Number.isFinite(violation.expected)) {
+        return `${violation.label}: ${violation.actual.toFixed(4)} ${violation.operator || ''} ${violation.expected.toFixed(4)}`;
+    }
+    return JSON.stringify(violation);
 }
 
 // 更新配比表格
@@ -663,15 +676,18 @@ function updateRatioTable(ratios) {
 }
 
 // 更新性能指标
-function updatePerformanceIndicators(performance) {
+function updatePerformanceIndicators(data) {
     const elements = {
-        '.total-price': `¥${performance.total_cost.toFixed(2)}/吨`,
-        '.total-heat': `${performance.heat_value.toFixed(0)} kcal/kg`,
-        '.total-ash': `${performance.ash_content.toFixed(2)}%`,
-        '.total-fixed-carbon': `${performance.fixed_carbon.toFixed(2)}%`,
-        '.total-volatile': `${performance.volatile_matter.toFixed(2)}%`,
-        '.total-sulfur': `${performance.sulfur_content.toFixed(2)}%`,
-        '.performance-ratio': performance.performance_ratio.toFixed(2)
+        '.total-price': formatNumeric(data?.total_price, value => `¥${value.toFixed(2)}/吨`),
+        '.total-heat': formatNumeric(data?.total_heat, value => `${value.toFixed(0)} kcal/kg`),
+        '.total-ash': formatNumeric(data?.total_ash, value => `${value.toFixed(2)}%`),
+        '.total-fixed-carbon': formatNumeric(data?.total_fixed_carbon, value => `${value.toFixed(2)}%`),
+        '.total-volatile': formatNumeric(data?.total_volatile, value => `${value.toFixed(2)}%`),
+        '.total-sulfur': formatNumeric(data?.total_sulfur, value => `${value.toFixed(2)}%`),
+        '.objective-type': data?.objective_type === 'pci_cost_effective_v1'
+            ? '喷煤性价比最优（可行域最低成本）'
+            : (data?.optimization_target || '--'),
+        '.feasibility-status': data?.is_feasible ? '可行，且满足全部硬约束' : '不可行或未找到可行解'
     };
     
     Object.keys(elements).forEach(selector => {
@@ -685,11 +701,11 @@ function updatePerformanceIndicators(performance) {
 }
 
 // 更新算法信息
-function updateAlgorithmInfo(algorithmInfo) {
+function updateAlgorithmInfo(data) {
     const elements = {
-        '.iterations': algorithmInfo.iterations,
-        '.time-taken': algorithmInfo.time_taken.toFixed(2),
-        '.fitness-value': algorithmInfo.fitness_value.toFixed(4)
+        '.iterations': Number.isFinite(data?.iterations) ? data.iterations : '--',
+        '.time-taken': formatNumeric(data?.time_taken, value => value.toFixed(2)),
+        '.fitness-value': formatNumeric(data?.fitness_value, value => value.toFixed(4))
     };
     
     Object.keys(elements).forEach(selector => {
@@ -702,25 +718,66 @@ function updateAlgorithmInfo(algorithmInfo) {
     });
 }
 
+function renderConstraintStatus(data) {
+    const container = document.querySelector('.constraint-status-list');
+    if (!container) return;
+
+    const violations = Array.isArray(data?.constraint_violations) ? data.constraint_violations : [];
+    const activeConstraints = Array.isArray(data?.active_constraints) ? data.active_constraints : [];
+    const diagnosis = Array.isArray(data?.diagnosis) ? data.diagnosis : [];
+
+    container.innerHTML = '';
+
+    if (data?.is_feasible) {
+        const successBadge = document.createElement('span');
+        successBadge.className = 'badge bg-success constraint-badge';
+        successBadge.innerHTML = '<i class="bi bi-check-circle me-1"></i>全部硬约束满足';
+        container.appendChild(successBadge);
+
+        if (activeConstraints.length > 0) {
+            activeConstraints.slice(0, 6).forEach(item => {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-warning text-dark constraint-badge';
+                badge.innerHTML = `<i class="bi bi-exclamation-triangle me-1"></i>活跃约束: ${item}`;
+                container.appendChild(badge);
+            });
+        }
+        return;
+    }
+
+    if (violations.length === 0 && diagnosis.length === 0) {
+        const badge = document.createElement('span');
+        badge.className = 'badge bg-secondary constraint-badge';
+        badge.innerHTML = '<i class="bi bi-info-circle me-1"></i>暂无约束诊断信息';
+        container.appendChild(badge);
+        return;
+    }
+
+    violations.slice(0, 8).forEach(item => {
+        const badge = document.createElement('span');
+        badge.className = 'badge bg-danger constraint-badge';
+        badge.innerHTML = `<i class="bi bi-x-circle me-1"></i>${toViolationText(item)}`;
+        container.appendChild(badge);
+    });
+
+    diagnosis.slice(0, 4).forEach(item => {
+        const badge = document.createElement('span');
+        badge.className = 'badge bg-secondary constraint-badge';
+        badge.innerHTML = `<i class="bi bi-info-circle me-1"></i>${toViolationText(item)}`;
+        container.appendChild(badge);
+    });
+}
+
 // 更新图表
 function updateCharts(optimizationResult) {
     console.log('开始更新图表, 数据:', optimizationResult);
-    
-    // 检查Chart.js是否已加载
+
     if (typeof Chart === 'undefined') {
         console.error('Chart.js 未加载');
         return;
     }
-    
-    // 调用charts.js中的初始化函数来更新图表
-    if (typeof initializeCharts === 'function') {
-        console.log('调用initializeCharts函数');
-        initializeCharts(optimizationResult);
-    } else {
-        console.error('initializeCharts function not found in charts.js');
-        // 如果charts.js函数不可用，使用简化的图表创建
-        createSimpleCharts(optimizationResult);
-    }
+
+    createSimpleCharts(optimizationResult);
 }
 
 // 简化的图表创建函数
@@ -736,10 +793,11 @@ function createSimpleCharts(data) {
         performanceChart.innerHTML = `
             <div class="d-flex align-items-center justify-content-center h-100">
                 <div class="text-center">
-                    <h6>混煤性能指标</h6>
-                    <p>热值: ${data.total_heat.toFixed(0)} kcal/kg</p>
-                    <p>灰分: ${data.total_ash.toFixed(2)}%</p>
-                    <p>成本: ¥${data.total_price.toFixed(2)}/吨</p>
+                    <h6>喷煤性价比结果</h6>
+                    <p>目标: ${data.objective_type === 'pci_cost_effective_v1' ? '可行域最低成本' : (data.optimization_target || '--')}</p>
+                    <p>热值: ${formatNumeric(data.total_heat, value => value.toFixed(0) + ' kcal/kg')}</p>
+                    <p>灰分: ${formatNumeric(data.total_ash, value => value.toFixed(2) + '%')}</p>
+                    <p>成本: ${formatNumeric(data.total_price, value => '¥' + value.toFixed(2) + '/吨')}</p>
                 </div>
             </div>
         `;
@@ -747,13 +805,20 @@ function createSimpleCharts(data) {
     
     const constraintChart = document.getElementById('constraintChart');
     if (constraintChart) {
+        const violations = Array.isArray(data?.constraint_violations) ? data.constraint_violations : [];
+        const diagnosis = Array.isArray(data?.diagnosis) ? data.diagnosis : [];
+        const statusText = data?.is_feasible ? '全部硬约束满足' : '当前方案不可行';
+        const detailLines = data?.is_feasible
+            ? (data?.active_constraints?.length ? data.active_constraints.slice(0, 3).map(item => `<p>活跃约束: ${item}</p>`).join('') : '<p>当前可行解存在约束余量</p>')
+            : [...violations, ...diagnosis].slice(0, 3).map(item => `<p>${toViolationText(item)}</p>`).join('');
         constraintChart.innerHTML = `
             <div class="d-flex align-items-center justify-content-center h-100">
                 <div class="text-center">
-                    <h6>优化完成</h6>
-                    <p>迭代次数: ${data.iterations}</p>
-                    <p>计算耗时: ${data.time_taken.toFixed(2)}秒</p>
-                    <p>约束满足: ✓</p>
+                    <h6>${data?.is_feasible ? '可行性检查通过' : '约束诊断'}</h6>
+                    <p>迭代次数: ${Number.isFinite(data?.iterations) ? data.iterations : '--'}</p>
+                    <p>计算耗时: ${formatNumeric(data?.time_taken, value => value.toFixed(2) + '秒')}</p>
+                    <p>${statusText}</p>
+                    ${detailLines}
                 </div>
             </div>
         `;
@@ -906,74 +971,146 @@ function showWarningMessage(message) {
     alert('警告: ' + message);
 }
 
+function formatShareTimestamp(date = new Date()) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function buildShareableResultText(data) {
+    const ratioEntries = Object.entries(data.blending_ratio || {})
+        .filter(([, ratio]) => Number.isFinite(ratio) && ratio > 0)
+        .sort((a, b) => b[1] - a[1]);
+    const activeConstraints = Array.isArray(data.active_constraints) ? data.active_constraints.filter(Boolean) : [];
+    const violations = Array.isArray(data.constraint_violations) ? data.constraint_violations : [];
+    const diagnosis = Array.isArray(data.diagnosis) ? data.diagnosis.filter(Boolean) : [];
+
+    const lines = [
+        '【喷煤混配优化结果】',
+        `目标：${data.objective_type === 'pci_cost_effective_v1' ? '喷煤性价比最优（可行域最低成本）' : (data.optimization_target || '喷煤性价比最优')}`,
+        `结论：${data.is_feasible ? '已找到满足全部硬约束的推荐方案' : '当前结果不可直接用于生产'}`,
+        '',
+        '一、推荐配比'
+    ];
+
+    if (ratioEntries.length === 0) {
+        lines.push('暂无有效配比结果');
+    } else {
+        ratioEntries.forEach(([name, ratio], index) => {
+            lines.push(`${index + 1}. ${name} ${((ratio || 0) * 100).toFixed(2)}%`);
+        });
+    }
+
+    lines.push(
+        '',
+        '二、关键指标',
+        `吨煤成本：¥${Number.isFinite(data.total_price) ? data.total_price.toFixed(2) : '--'}`,
+        `综合热值：${Number.isFinite(data.total_heat) ? data.total_heat.toFixed(0) : '--'} kcal/kg`,
+        `综合灰分：${Number.isFinite(data.total_ash) ? data.total_ash.toFixed(2) : '--'}%`,
+        `综合挥发分：${Number.isFinite(data.total_volatile) ? data.total_volatile.toFixed(2) : '--'}%`,
+        `综合固定碳：${Number.isFinite(data.total_fixed_carbon) ? data.total_fixed_carbon.toFixed(2) : '--'}%`,
+        `综合硫分：${Number.isFinite(data.total_sulfur) ? data.total_sulfur.toFixed(2) : '--'}%`,
+        `约束可行性：${data.constraints_satisfied ? '满足' : '不满足'}`
+    );
+
+    lines.push('', '三、约束说明');
+    if (data.constraints_satisfied) {
+        lines.push('全部硬约束满足');
+        if (activeConstraints.length > 0) {
+            lines.push(`活跃约束：${activeConstraints.join('、')}`);
+        }
+    } else {
+        if (violations.length > 0) {
+            violations.slice(0, 5).forEach((item, index) => {
+                lines.push(`${index + 1}. ${toViolationText(item)}`);
+            });
+        } else if (diagnosis.length > 0) {
+            diagnosis.slice(0, 5).forEach((item, index) => {
+                lines.push(`${index + 1}. ${toViolationText(item)}`);
+            });
+        } else {
+            lines.push('暂无详细约束诊断');
+        }
+    }
+
+    lines.push(
+        '',
+        '四、计算信息',
+        `迭代次数：${Number.isFinite(data.iterations) ? data.iterations : '--'}`,
+        `计算耗时：${Number.isFinite(data.time_taken) ? data.time_taken.toFixed(2) : '--'} 秒`,
+        `生成时间：${formatShareTimestamp()}`,
+        '',
+        '说明：以上内容为纯文本格式，可直接粘贴到短信或微信。'
+    );
+
+    return lines.join('\n');
+}
+
+function fallbackCopyText(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', 'readonly');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    let copied = false;
+    try {
+        copied = document.execCommand('copy');
+    } catch (error) {
+        console.error('execCommand copy failed:', error);
+    }
+
+    document.body.removeChild(textarea);
+    return copied;
+}
+
+function showCopySuccessState() {
+    showSuccessMessage('分享文本已复制，可直接粘贴到短信或微信。');
+
+    const copyBtn = document.getElementById('copyShareResultBtn');
+    if (!copyBtn) return;
+
+    const originalHtml = copyBtn.innerHTML;
+    copyBtn.innerHTML = `<i class="bi bi-check-lg me-1"></i>已复制`;
+    copyBtn.classList.remove('btn-outline-secondary');
+    copyBtn.classList.add('btn-success');
+
+    setTimeout(() => {
+        copyBtn.innerHTML = originalHtml;
+        copyBtn.classList.remove('btn-success');
+        copyBtn.classList.add('btn-outline-secondary');
+    }, 2000);
+}
+
 // --- 新增：复制分享结果为文本 ---
 function copyShareableResultText() {
     if (!lastOptimizationResult) {
         showWarningMessage('没有可分享的优化结果，请先运行优化计算。');
         return;
     }
-    
-    const data = lastOptimizationResult;
-    let shareText = `【智能混煤方案分享】\n`;
-    shareText += `--------------------\n`;
-    
-    // 1. 配比方案
-    shareText += `📊 配比方案:\n`;
-    if (data.blending_ratio && Object.keys(data.blending_ratio).length > 0) {
-        for (const [name, ratio] of Object.entries(data.blending_ratio)) {
-            if (ratio > 0) {
-                shareText += `  - ${name}: ${(ratio * 100).toFixed(2)}%\n`;
+
+    const shareText = buildShareableResultText(lastOptimizationResult);
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(shareText).then(() => {
+            showCopySuccessState();
+        }).catch(error => {
+            console.error('Clipboard API copy failed:', error);
+            if (fallbackCopyText(shareText)) {
+                showCopySuccessState();
+            } else {
+                showErrorMessage('复制失败，请检查浏览器剪贴板权限。');
             }
-        }
-    } else {
-        shareText += `  - 无有效配比\n`;
+        });
+        return;
     }
-    shareText += `\n`;
-    
-    // 2. 核心指标
-    shareText += `📈 混煤核心指标:\n`;
-    shareText += `  - 吨煤成本: ¥${data.total_price.toFixed(2)}\n`;
-    shareText += `  - 综合热值: ${data.total_heat.toFixed(0)} kcal/kg\n`;
-    shareText += `  - 综合灰分: ${data.total_ash.toFixed(2)}%\n`;
-    shareText += `  - 综合硫分: ${data.total_sulfur.toFixed(2)}%\n`;
-    shareText += `  - 综合挥发分: ${data.total_volatile.toFixed(2)}%\n`;
-    shareText += `  - 综合固定碳: ${data.total_fixed_carbon.toFixed(2)}%\n`;
-    shareText += `  - 性价比: ${data.performance_price_ratio.toFixed(2)}\n\n`;
 
-    // 3. 算法信息
-    shareText += `⚙️ 算法信息:\n`;
-    shareText += `  - 计算耗时: ${data.time_taken.toFixed(2)} 秒\n`;
-    shareText += `  - 迭代次数: ${data.iterations}\n`;
-    shareText += `  - 约束满足: ${data.constraints_satisfied ? '是' : '否'}\n\n`;
-
-    // 4. 时间戳和页脚
-    const now = new Date();
-    const formattedTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-    shareText += `--------------------\n`;
-    shareText += `生成时间: ${formattedTimestamp}\n`;
-    shareText += `由 智能煤炭混配系统 生成`;
-
-    // 使用 Clipboard API 复制到剪贴板
-    navigator.clipboard.writeText(shareText).then(() => {
-        showSuccessMessage('优化结果已成功复制到剪贴板！');
-        
-        // 按钮反馈
-        const copyBtn = document.getElementById('copyShareResultBtn');
-        const originalHtml = copyBtn.innerHTML;
-        copyBtn.innerHTML = `<i class="bi bi-check-lg me-1"></i>已复制!`;
-        copyBtn.classList.remove('btn-outline-secondary');
-        copyBtn.classList.add('btn-success');
-        
-        setTimeout(() => {
-            copyBtn.innerHTML = originalHtml;
-            copyBtn.classList.remove('btn-success');
-            copyBtn.classList.add('btn-outline-secondary');
-        }, 2000);
-
-    }).catch(err => {
-        console.error('复制失败: ', err);
-        showErrorMessage('复制失败，您的浏览器可能不支持或未授权该操作。');
-    });
+    if (fallbackCopyText(shareText)) {
+        showCopySuccessState();
+    } else {
+        showErrorMessage('复制失败，当前浏览器不支持自动复制。');
+    }
 }
 
 // 导出优化报告

@@ -299,9 +299,7 @@
                                 <div class="mb-3">
                                     <label class="form-label fw-bold">优化目标</label>
                                     <select class="form-select" id="optimizationTarget">
-                                        <option value="最低成本" selected>最低成本</option>
-                                        <option value="最高性价比">最高性价比</option>
-                                        <option value="最佳性能">最佳性能</option>
+                                        <option value="喷煤性价比最优" selected>喷煤性价比最优（可行域最低成本）</option>
                                     </select>
                                 </div>
                                 <div class="d-grid">
@@ -367,7 +365,7 @@
                             <!-- 混煤性能 -->
                             <div class="col-lg-4 mb-4">
                                 <div class="result-section">
-                                    <h5 class="mb-3">混煤性能指标</h5>
+                                    <h5 class="mb-3">喷煤性价比结果</h5>
                                     <div class="chart-container" id="performanceChart">
                                         <!-- 这里将通过JavaScript插入雷达图 -->
                                         <div class="d-flex justify-content-center align-items-center h-100">
@@ -402,8 +400,12 @@
                                                     <td class="total-sulfur">--</td>
                                                 </tr>
                                                 <tr>
-                                                    <th>性价比:</th>
-                                                    <td class="performance-ratio">--</td>
+                                                    <th>优化目标:</th>
+                                                    <td class="objective-type">--</td>
+                                                </tr>
+                                                <tr>
+                                                    <th>可行性:</th>
+                                                    <td class="feasibility-status">--</td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -423,24 +425,11 @@
                                     </div>
                                     <div>
                                         <h6 class="mb-2">约束状态:</h6>
-                                        <span class="badge bg-success constraint-badge">
-                                            <i class="bi bi-check-circle me-1"></i>热值约束满足
-                                        </span>
-                                        <span class="badge bg-success constraint-badge">
-                                            <i class="bi bi-check-circle me-1"></i>灰分约束满足
-                                        </span>
-                                        <span class="badge bg-success constraint-badge">
-                                            <i class="bi bi-check-circle me-1"></i>挥发分约束满足
-                                        </span>
-                                        <span class="badge bg-success constraint-badge">
-                                            <i class="bi bi-check-circle me-1"></i>固定碳约束满足
-                                        </span>
-                                        <span class="badge bg-success constraint-badge">
-                                            <i class="bi bi-check-circle me-1"></i>硫含量约束满足
-                                        </span>
-                                        <span class="badge bg-success constraint-badge">
-                                            <i class="bi bi-check-circle me-1"></i>价格约束满足
-                                        </span>
+                                        <div class="constraint-status-list">
+                                            <span class="badge bg-secondary constraint-badge">
+                                                <i class="bi bi-info-circle me-1"></i>等待优化结果
+                                            </span>
+                                        </div>
                                     </div>
                                     <div class="mt-3">
                                         <h6 class="mb-2">算法性能:</h6>
