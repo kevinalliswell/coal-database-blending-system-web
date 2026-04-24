@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>服务器错误 - 煤种数据库管理及配煤优化系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        .error-container {
+            text-align: center;
+            padding: 50px 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .error-code {
+            font-size: 120px;
+            font-weight: bold;
+            color: #e74c3c;
+            margin: 0;
+            line-height: 1;
+        }
+        .error-message {
+            font-size: 24px;
+            color: #2c3e50;
+            margin: 20px 0;
+        }
+        .error-description {
+            font-size: 16px;
+            color: #7f8c8d;
+            margin: 20px 0;
+            line-height: 1.6;
+        }
+        .back-button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 20px;
+            transition: background-color 0.3s;
+        }
+        .back-button:hover {
+            background-color: #2980b9;
+        }
+        .refresh-button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #27ae60;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 10px 0 10px;
+            transition: background-color 0.3s;
+        }
+        .refresh-button:hover {
+            background-color: #229954;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <h1 class="error-code">500</h1>
+        <h2 class="error-message">服务器内部错误</h2>
+        <p class="error-description">
+            抱歉，服务器遇到了一个内部错误。<br>
+            我们正在努力解决这个问题，请稍后再试。
+        </p>
+        <a href="javascript:location.reload()" class="refresh-button">刷新页面</a>
+        <a href="{{ url_for('index') }}" class="back-button">返回首页</a>
+    </div>
+</body>
+</html> 

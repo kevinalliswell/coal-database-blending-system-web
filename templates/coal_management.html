@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>煤种数据管理 - 煤种数据库管理及配煤优化系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-gear-fill me-2"></i>煤种数据库管理及配煤优化系统
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/"><i class="bi bi-house-door me-1"></i>首页</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/coal_management"><i class="bi bi-database me-1"></i>煤种数据</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/smart_blending"><i class="bi bi-cpu me-1"></i>智能混煤</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/replacement_ratio"><i class="bi bi-calculator me-1"></i>置换比计算</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#"><i class="bi bi-graph-up me-1"></i>优化历史</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#"><i class="bi bi-gear me-1"></i>系统设置</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#"><i class="bi bi-question-circle me-1"></i>帮助</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容区 -->
+    <div class="container my-4">
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="alert alert-info" role="alert">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    煤种数据管理中心，可以添加、删除、导入和导出煤种数据。
+                </div>
+            </div>
+        </div>
+
+        <!-- 操作工具栏 -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-tools me-2"></i>数据操作</span>
+                        <div>
+                            <button class="btn btn-sm btn-success me-2" data-bs-toggle="modal" data-bs-target="#addCoalModal">
+                                <i class="bi bi-plus-circle me-1"></i>添加煤种
+                            </button>
+                            <button class="btn btn-sm btn-primary me-2" data-bs-toggle="modal" data-bs-target="#batchImportModal">
+                                <i class="bi bi-upload me-1"></i>批量导入
+                            </button>
+                            <button class="btn btn-sm btn-warning me-2" onclick="exportSelected()">
+                                <i class="bi bi-download me-1"></i>导出选中
+                            </button>
+                            <button class="btn btn-sm btn-outline-warning me-2" onclick="exportAll()">
+                                <i class="bi bi-download me-1"></i>导出全部
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="batchDelete()">
+                                <i class="bi bi-trash me-1"></i>批量删除
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                    <input type="text" class="form-control" id="searchInput" placeholder="搜索煤种名称或类型...">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-select" id="typeFilter">
+                                    <option value="">所有类型</option>
+                                    <option value="烟煤">烟煤</option>
+                                    <option value="无烟煤">无烟煤</option>
+                                    <option value="褐煤">褐煤</option>
+                                    <option value="贫煤">贫煤</option>
+                                    <option value="其他">其他</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <select class="form-select" id="pageSizeSelect">
+                                    <option value="10">每页10条</option>
+                                    <option value="20">每页20条</option>
+                                    <option value="50">每页50条</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-outline-primary me-2" onclick="searchCoals()">
+                                    <i class="bi bi-search me-1"></i>搜索
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="resetSearch()">
+                                    <i class="bi bi-arrow-repeat me-1"></i>重置
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 煤种数据表格 -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-table me-2"></i>煤种数据列表</span>
+                        <div>
+                            <span class="badge bg-primary" id="totalCount">总计: 0 条</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th scope="col">
+                                            <input class="form-check-input" type="checkbox" id="selectAll">
+                                        </th>
+                                        <th scope="col">序号</th>
+                                        <th scope="col">煤种名称</th>
+                                        <th scope="col">煤种类型</th>
+                                        <th scope="col">价格(元/吨)</th>
+                                        <th scope="col">热值(kcal/kg)</th>
+                                        <th scope="col">灰分(%)</th>
+                                        <th scope="col">挥发分(%)</th>
+                                        <th scope="col">固定碳(%)</th>
+                                        <th scope="col">全硫(%)</th>
+                                        <th scope="col">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="coalTableBody">
+                                    <!-- 动态加载数据 -->
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- 分页控件 -->
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div>
+                                显示第 <span id="startIndex">0</span> - <span id="endIndex">0</span> 条，共 <span id="totalItems">0</span> 条记录
+                            </div>
+                            <nav aria-label="页码导航">
+                                <ul class="pagination mb-0" id="pagination">
+                                    <!-- 分页按钮动态生成 -->
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：添加煤种 -->
+    <div class="modal fade" id="addCoalModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加新煤种</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addCoalForm">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">煤种名称 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="name" required placeholder="输入煤种名称">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">煤种类型 <span class="text-danger">*</span></label>
+                                <select class="form-select" name="type" required>
+                                    <option value="">请选择类型</option>
+                                    <option value="烟煤">烟煤</option>
+                                    <option value="无烟煤">无烟煤</option>
+                                    <option value="褐煤">褐煤</option>
+                                    <option value="贫煤">贫煤</option>
+                                    <option value="其他">其他</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">供应商/产地</label>
+                                <input type="text" class="form-control" name="supplier" placeholder="输入供应商或产地">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">价格(元/吨) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" name="price" required step="0.01" placeholder="输入价格">
+                            </div>
+                        </div>
+                        
+                        <h6 class="mt-4 mb-3">技术指标</h6>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">热值(kcal/kg) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" name="calorific_value" required placeholder="输入热值">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">灰分(%) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" name="ash_content" required step="0.01" placeholder="输入灰分">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">挥发分(%) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" name="volatile_matter" required step="0.01" placeholder="输入挥发分">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">固定碳(%) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" name="fixed_carbon" required step="0.01" placeholder="输入固定碳">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">全硫(%) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" name="total_sulfur" required step="0.01" placeholder="输入硫含量">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">全水分(%)</label>
+                                <input type="number" class="form-control" name="moisture" step="0.01" placeholder="输入全水分">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">空干基水分(%)</label>
+                                <input type="number" class="form-control" name="mad" step="0.01" placeholder="输入空干基水分">
+                                <div class="form-text">空气干燥基水分的百分比</div>
+                            </div>
+                        </div>
+                        
+                        <h6 class="mt-4 mb-3">其他指标 (可选)</h6>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">可磨性HGI</label>
+                                <input type="number" class="form-control" name="hgi" placeholder="输入可磨性">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">燃尽率(%)</label>
+                                <input type="number" class="form-control" name="burnout_rate" step="0.01" placeholder="输入燃尽率">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">含碳量C(%)</label>
+                                <input type="number" class="form-control" name="carbon_content" step="0.01" placeholder="输入含碳量">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">含氢量H(%)</label>
+                                <input type="number" class="form-control" name="hydrogen_content" step="0.01" placeholder="输入含氢量">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">含氮量N(%)</label>
+                                <input type="number" class="form-control" name="nitrogen_content" step="0.01" placeholder="输入含氮量">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveCoal()">保存煤种</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：编辑煤种 -->
+    <div class="modal fade" id="editCoalModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">编辑煤种信息</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editCoalForm">
+                        <input type="hidden" name="coal_id" id="editCoalId">
+                        <!-- 表单字段与添加煤种相同 -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">煤种名称 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="name" required placeholder="输入煤种名称">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">煤种类型 <span class="text-danger">*</span></label>
+                                <select class="form-select" name="type" required>
+                                    <option value="">请选择类型</option>
+                                    <option value="烟煤">烟煤</option>
+                                    <option value="无烟煤">无烟煤</option>
+                                    <option value="褐煤">褐煤</option>
+                                    <option value="贫煤">贫煤</option>
+                                    <option value="其他">其他</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">供应商/产地</label>
+                                <input type="text" class="form-control" name="supplier" placeholder="输入供应商或产地">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">价格(元/吨) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" name="price" required step="0.01" placeholder="输入价格">
+                            </div>
+                        </div>
+                        
+                        <h6 class="mt-4 mb-3">技术指标</h6>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">热值(kcal/kg) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" name="calorific_value" required placeholder="输入热值">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">灰分(%) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" name="ash_content" required step="0.01" placeholder="输入灰分">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">挥发分(%) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" name="volatile_matter" required step="0.01" placeholder="输入挥发分">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">固定碳(%) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" name="fixed_carbon" required step="0.01" placeholder="输入固定碳">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">全硫(%) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" name="total_sulfur" required step="0.01" placeholder="输入硫含量">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">全水分(%)</label>
+                                <input type="number" class="form-control" name="moisture" step="0.01" placeholder="输入全水分">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">空干基水分(%)</label>
+                                <input type="number" class="form-control" name="mad" step="0.01" placeholder="输入空干基水分">
+                                <div class="form-text">空气干燥基水分的百分比</div>
+                            </div>
+                        </div>
+                        
+                        <h6 class="mt-4 mb-3">其他指标 (可选)</h6>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">可磨性HGI</label>
+                                <input type="number" class="form-control" name="hgi" placeholder="输入可磨性">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">燃尽率(%)</label>
+                                <input type="number" class="form-control" name="burnout_rate" step="0.01" placeholder="输入燃尽率">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">含碳量C(%)</label>
+                                <input type="number" class="form-control" name="carbon_content" step="0.01" placeholder="输入含碳量">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">含氢量H(%)</label>
+                                <input type="number" class="form-control" name="hydrogen_content" step="0.01" placeholder="输入含氢量">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">含氮量N(%)</label>
+                                <input type="number" class="form-control" name="nitrogen_content" step="0.01" placeholder="输入含氮量">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="updateCoal()">保存修改</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：批量导入 -->
+    <div class="modal fade" id="batchImportModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">批量导入煤种数据</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>导入说明：</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>支持CSV和Excel格式文件</li>
+                            <li>文件大小不超过16MB</li>
+                            <li>请按照模板格式准备数据</li>
+                            <li>必填字段：煤种名称、类型、价格、热值、灰分、挥发分、固定碳、全硫</li>
+                        </ul>
+                    </div>
+
+                    <div class="mb-3">
+                        <button class="btn btn-outline-primary" onclick="downloadTemplate()">
+                            <i class="bi bi-download me-1"></i>下载导入模板
+                        </button>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">选择文件</label>
+                        <input class="form-control" type="file" id="importFile" accept=".csv,.xlsx,.xls">
+                        <div class="form-text">支持CSV、Excel格式文件</div>
+                    </div>
+
+                    <div id="importProgress" class="mb-3" style="display: none;">
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div class="text-center mt-2">
+                            <small class="text-muted">正在导入数据...</small>
+                        </div>
+                    </div>
+
+                    <div id="importResult" class="alert" style="display: none;">
+                        <!-- 导入结果将显示在这里 -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="uploadFile()" id="uploadBtn">
+                        <i class="bi bi-upload me-1"></i>开始导入
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：煤种详情 -->
+    <div class="modal fade" id="coalDetailModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">煤种详细信息</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>基本信息</h6>
+                            <table class="table table-bordered">
+                                <tbody>
+                                    <tr>
+                                        <th>煤种名称</th>
+                                        <td id="detailCoalName">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>煤种类型</th>
+                                        <td id="detailCoalType">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>供应商/产地</th>
+                                        <td id="detailSupplier">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>价格(元/吨)</th>
+                                        <td id="detailPrice">-</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>技术指标</h6>
+                            <table class="table table-bordered">
+                                <tbody>
+                                    <tr>
+                                        <th>热值(kcal/kg)</th>
+                                        <td id="detailCalorificValue">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>灰分(%)</th>
+                                        <td id="detailAshContent">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>挥发分(%)</th>
+                                        <td id="detailVolatileMatter">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>固定碳(%)</th>
+                                        <td id="detailFixedCarbon">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>全硫(%)</th>
+                                        <td id="detailTotalSulfur">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>全水分(%)</th>
+                                        <td id="detailMoisture">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>空干基水分(%)</th>
+                                        <td id="detailMad">-</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-12">
+                            <h6>其他指标</h6>
+                            <table class="table table-bordered">
+                                <tbody>
+                                    <tr>
+                                        <th>可磨性HGI</th>
+                                        <td id="detailHgi">-</td>
+                                        <th>燃尽率(%)</th>
+                                        <td id="detailBurnoutRate">-</td>
+                                        <th>含碳量C(%)</th>
+                                        <td id="detailCarbonContent">-</td>
+                                    </tr>
+                                    <tr>
+                                        <th>含氢量H(%)</th>
+                                        <td id="detailHydrogenContent">-</td>
+                                        <th>含氮量N(%)</th>
+                                        <td id="detailNitrogenContent">-</td>
+                                        <th></th>
+                                        <td></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-primary" id="editFromDetailBtn">编辑信息</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/coal_management.js') }}"></script>
+</body>
+</html>

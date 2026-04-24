@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""服务层兼容包。"""

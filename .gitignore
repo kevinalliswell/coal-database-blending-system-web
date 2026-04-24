@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment files
+.env
+.env.local
+
+# Flask / runtime artifacts
+instance/
+*.log
+*.pid
+*.db
+*.sqlite
+*.sqlite3
+migrations/__pycache__/
+
+# Project runtime data
+data/uploads/
+data/history/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Archives / build outputs
+*.zip
+dist/
+build/
