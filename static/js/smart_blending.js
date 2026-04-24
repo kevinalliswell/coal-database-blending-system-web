@@ -971,79 +971,146 @@ function showWarningMessage(message) {
     alert('警告: ' + message);
 }
 
+function formatShareTimestamp(date = new Date()) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function buildShareableResultText(data) {
+    const ratioEntries = Object.entries(data.blending_ratio || {})
+        .filter(([, ratio]) => Number.isFinite(ratio) && ratio > 0)
+        .sort((a, b) => b[1] - a[1]);
+    const activeConstraints = Array.isArray(data.active_constraints) ? data.active_constraints.filter(Boolean) : [];
+    const violations = Array.isArray(data.constraint_violations) ? data.constraint_violations : [];
+    const diagnosis = Array.isArray(data.diagnosis) ? data.diagnosis.filter(Boolean) : [];
+
+    const lines = [
+        '【喷煤混配优化结果】',
+        `目标：${data.objective_type === 'pci_cost_effective_v1' ? '喷煤性价比最优（可行域最低成本）' : (data.optimization_target || '喷煤性价比最优')}`,
+        `结论：${data.is_feasible ? '已找到满足全部硬约束的推荐方案' : '当前结果不可直接用于生产'}`,
+        '',
+        '一、推荐配比'
+    ];
+
+    if (ratioEntries.length === 0) {
+        lines.push('暂无有效配比结果');
+    } else {
+        ratioEntries.forEach(([name, ratio], index) => {
+            lines.push(`${index + 1}. ${name} ${((ratio || 0) * 100).toFixed(2)}%`);
+        });
+    }
+
+    lines.push(
+        '',
+        '二、关键指标',
+        `吨煤成本：¥${Number.isFinite(data.total_price) ? data.total_price.toFixed(2) : '--'}`,
+        `综合热值：${Number.isFinite(data.total_heat) ? data.total_heat.toFixed(0) : '--'} kcal/kg`,
+        `综合灰分：${Number.isFinite(data.total_ash) ? data.total_ash.toFixed(2) : '--'}%`,
+        `综合挥发分：${Number.isFinite(data.total_volatile) ? data.total_volatile.toFixed(2) : '--'}%`,
+        `综合固定碳：${Number.isFinite(data.total_fixed_carbon) ? data.total_fixed_carbon.toFixed(2) : '--'}%`,
+        `综合硫分：${Number.isFinite(data.total_sulfur) ? data.total_sulfur.toFixed(2) : '--'}%`,
+        `约束可行性：${data.constraints_satisfied ? '满足' : '不满足'}`
+    );
+
+    lines.push('', '三、约束说明');
+    if (data.constraints_satisfied) {
+        lines.push('全部硬约束满足');
+        if (activeConstraints.length > 0) {
+            lines.push(`活跃约束：${activeConstraints.join('、')}`);
+        }
+    } else {
+        if (violations.length > 0) {
+            violations.slice(0, 5).forEach((item, index) => {
+                lines.push(`${index + 1}. ${toViolationText(item)}`);
+            });
+        } else if (diagnosis.length > 0) {
+            diagnosis.slice(0, 5).forEach((item, index) => {
+                lines.push(`${index + 1}. ${toViolationText(item)}`);
+            });
+        } else {
+            lines.push('暂无详细约束诊断');
+        }
+    }
+
+    lines.push(
+        '',
+        '四、计算信息',
+        `迭代次数：${Number.isFinite(data.iterations) ? data.iterations : '--'}`,
+        `计算耗时：${Number.isFinite(data.time_taken) ? data.time_taken.toFixed(2) : '--'} 秒`,
+        `生成时间：${formatShareTimestamp()}`,
+        '',
+        '说明：以上内容为纯文本格式，可直接粘贴到短信或微信。'
+    );
+
+    return lines.join('\n');
+}
+
+function fallbackCopyText(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', 'readonly');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    let copied = false;
+    try {
+        copied = document.execCommand('copy');
+    } catch (error) {
+        console.error('execCommand copy failed:', error);
+    }
+
+    document.body.removeChild(textarea);
+    return copied;
+}
+
+function showCopySuccessState() {
+    showSuccessMessage('分享文本已复制，可直接粘贴到短信或微信。');
+
+    const copyBtn = document.getElementById('copyShareResultBtn');
+    if (!copyBtn) return;
+
+    const originalHtml = copyBtn.innerHTML;
+    copyBtn.innerHTML = `<i class="bi bi-check-lg me-1"></i>已复制`;
+    copyBtn.classList.remove('btn-outline-secondary');
+    copyBtn.classList.add('btn-success');
+
+    setTimeout(() => {
+        copyBtn.innerHTML = originalHtml;
+        copyBtn.classList.remove('btn-success');
+        copyBtn.classList.add('btn-outline-secondary');
+    }, 2000);
+}
+
 // --- 新增：复制分享结果为文本 ---
 function copyShareableResultText() {
     if (!lastOptimizationResult) {
         showWarningMessage('没有可分享的优化结果，请先运行优化计算。');
         return;
     }
-    
-    const data = lastOptimizationResult;
-    let shareText = `【智能混煤方案分享】\n`;
-    shareText += `--------------------\n`;
-    
-    // 1. 配比方案
-    shareText += `📊 配比方案:\n`;
-    if (data.blending_ratio && Object.keys(data.blending_ratio).length > 0) {
-        for (const [name, ratio] of Object.entries(data.blending_ratio)) {
-            if (ratio > 0) {
-                shareText += `  - ${name}: ${(ratio * 100).toFixed(2)}%\n`;
+
+    const shareText = buildShareableResultText(lastOptimizationResult);
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(shareText).then(() => {
+            showCopySuccessState();
+        }).catch(error => {
+            console.error('Clipboard API copy failed:', error);
+            if (fallbackCopyText(shareText)) {
+                showCopySuccessState();
+            } else {
+                showErrorMessage('复制失败，请检查浏览器剪贴板权限。');
             }
-        }
+        });
+        return;
+    }
+
+    if (fallbackCopyText(shareText)) {
+        showCopySuccessState();
     } else {
-        shareText += `  - 无有效配比\n`;
+        showErrorMessage('复制失败，当前浏览器不支持自动复制。');
     }
-    shareText += `\n`;
-    
-    // 2. 核心指标
-    shareText += `📈 混煤核心指标:\n`;
-    shareText += `  - 优化目标: 喷煤性价比最优（可行域最低成本）\n`;
-    shareText += `  - 吨煤成本: ¥${data.total_price.toFixed(2)}\n`;
-    shareText += `  - 综合热值: ${data.total_heat.toFixed(0)} kcal/kg\n`;
-    shareText += `  - 综合灰分: ${data.total_ash.toFixed(2)}%\n`;
-    shareText += `  - 综合硫分: ${data.total_sulfur.toFixed(2)}%\n`;
-    shareText += `  - 综合挥发分: ${data.total_volatile.toFixed(2)}%\n`;
-    shareText += `  - 综合固定碳: ${data.total_fixed_carbon.toFixed(2)}%\n`;
-    shareText += `  - 约束可行性: ${data.is_feasible ? '满足全部硬约束' : '不满足'}\n\n`;
-
-    // 3. 算法信息
-    shareText += `⚙️ 算法信息:\n`;
-    shareText += `  - 计算耗时: ${data.time_taken.toFixed(2)} 秒\n`;
-    shareText += `  - 迭代次数: ${data.iterations}\n`;
-    shareText += `  - 约束满足: ${data.constraints_satisfied ? '是' : '否'}\n`;
-    if (Array.isArray(data.active_constraints) && data.active_constraints.length > 0) {
-        shareText += `  - 活跃约束: ${data.active_constraints.join('、')}\n`;
-    }
-    shareText += `\n`;
-
-    // 4. 时间戳和页脚
-    const now = new Date();
-    const formattedTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-    shareText += `--------------------\n`;
-    shareText += `生成时间: ${formattedTimestamp}\n`;
-    shareText += `由 智能煤炭混配系统 生成`;
-
-    // 使用 Clipboard API 复制到剪贴板
-    navigator.clipboard.writeText(shareText).then(() => {
-        showSuccessMessage('优化结果已成功复制到剪贴板！');
-        
-        // 按钮反馈
-        const copyBtn = document.getElementById('copyShareResultBtn');
-        const originalHtml = copyBtn.innerHTML;
-        copyBtn.innerHTML = `<i class="bi bi-check-lg me-1"></i>已复制!`;
-        copyBtn.classList.remove('btn-outline-secondary');
-        copyBtn.classList.add('btn-success');
-        
-        setTimeout(() => {
-            copyBtn.innerHTML = originalHtml;
-            copyBtn.classList.remove('btn-success');
-            copyBtn.classList.add('btn-outline-secondary');
-        }, 2000);
-
-    }).catch(err => {
-        console.error('复制失败: ', err);
-        showErrorMessage('复制失败，您的浏览器可能不支持或未授权该操作。');
-    });
 }
 
 // 导出优化报告
