@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>页面未找到 - 煤种数据库管理及配煤优化系统</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any">
     <style>
         .error-container {
             text-align: center;
@@ -53,7 +54,7 @@
             抱歉，您访问的页面不存在。<br>
             可能是页面已被删除、移动或您输入的地址有误。
         </p>
-        <a href="{{ url_for('index') }}" class="back-button">返回首页</a>
+        <a href="{{ url_for('pages.index') }}" class="back-button">返回首页</a>
     </div>
 </body>
-</html> 
+</html>

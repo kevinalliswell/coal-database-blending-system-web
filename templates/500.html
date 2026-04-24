@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>服务器错误 - 煤种数据库管理及配煤优化系统</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any">
     <style>
         .error-container {
             text-align: center;
@@ -67,7 +68,7 @@
             我们正在努力解决这个问题，请稍后再试。
         </p>
         <a href="javascript:location.reload()" class="refresh-button">刷新页面</a>
-        <a href="{{ url_for('index') }}" class="back-button">返回首页</a>
+        <a href="{{ url_for('pages.index') }}" class="back-button">返回首页</a>
     </div>
 </body>
-</html> 
+</html>
