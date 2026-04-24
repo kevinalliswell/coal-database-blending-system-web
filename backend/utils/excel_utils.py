@@ -417,6 +417,13 @@ def _write_table_row(ws, row, values, highlight_col=None):
 
 def _merge_and_write(ws, merged_range, value, font, fill, border, alignment):
     ws.merge_cells(merged_range)
+    cells = ws[merged_range]
+    for row in cells:
+        for cell in row:
+            cell.fill = fill or PatternFill(fill_type=None)
+            cell.border = border
+            cell.alignment = alignment
+
     cell = ws[merged_range.split(':')[0]]
     cell.value = value
     cell.font = font
