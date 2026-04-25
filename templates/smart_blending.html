@@ -10,7 +10,6 @@
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any">
 </head>
 <body>
-    <!-- 导航栏 -->
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container">
             <a class="navbar-brand" href="#">
@@ -47,32 +46,82 @@
         </div>
     </nav>
 
-    <!-- 主内容区 -->
     <div class="container my-4">
         <div class="row mb-4">
             <div class="col-md-12">
-                <div class="alert alert-primary" role="alert">
-                    <i class="bi bi-info-circle-fill me-2"></i>
-                    智能混煤优化系统！基于遗传算法，可帮助您找到最优的煤种配比方案。
+                <div class="page-hero card">
+                    <div class="page-hero__body">
+                        <div class="page-hero__content">
+                            <div class="page-hero__eyebrow">PCI Blending Console</div>
+                            <h1 class="page-hero__title">智能混煤优化工作台</h1>
+                            <p class="page-hero__subtitle mb-0">在工艺约束内寻找最低成本的喷煤混配方案，先看结论，再下钻详情。</p>
+                            <div class="page-hero__chips">
+                                <span class="hero-chip"><i class="bi bi-lightning-charge me-1"></i>结论优先</span>
+                                <span class="hero-chip"><i class="bi bi-sliders me-1"></i>工艺约束先校验</span>
+                                <span class="hero-chip"><i class="bi bi-diagram-3 me-1"></i>保留完整下钻明细</span>
+                            </div>
+                            <div class="page-hero__stats">
+                                <div class="hero-stat">
+                                    <span class="hero-stat__label">已选煤种</span>
+                                    <strong class="hero-stat__value"><span id="heroSelectedCount">0</span> 种</strong>
+                                    <span class="hero-stat__hint" id="heroSelectedHint">至少选择 2 种煤后即可开始优化</span>
+                                </div>
+                                <div class="hero-stat">
+                                    <span class="hero-stat__label">约束策略</span>
+                                    <strong class="hero-stat__value">标准工艺窗口</strong>
+                                    <span class="hero-stat__hint">热值、灰分、挥发分、固定碳、硫分与价格统一校验</span>
+                                </div>
+                                <div class="hero-stat">
+                                    <span class="hero-stat__label">当前结论</span>
+                                    <strong class="hero-stat__value" id="heroResultHeadline">等待优化结论</strong>
+                                    <span class="hero-stat__hint" id="heroResultHint">右侧决策面板会优先显示可行性、成本与关键诊断</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="page-hero__meta">
+                            <span class="page-hero__meta-label">当前模式</span>
+                            <strong>喷煤性价比最优</strong>
+                            <div class="page-hero__meta-divider"></div>
+                            <span class="page-hero__meta-label">工作状态</span>
+                            <div class="hero-status-pill" id="heroStatusPill" data-tone="info">待选择煤种</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- 煤种选择 -->
         <div class="row mb-4">
             <div class="col-md-12">
-                <div class="card coal-card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span><i class="bi bi-layers me-2"></i>煤种选择</span>
+                <div class="workspace-statusbar" id="workspaceStatusBar" data-tone="info" role="status" aria-live="polite">
+                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
                         <div>
+                            <i class="bi bi-activity me-2"></i>
+                            <span id="workspaceStatusText">等待选择煤种，当前配置将在本地自动保存。</span>
+                        </div>
+                        <div class="small text-muted" id="workspaceStatusHint">
+                            选择至少两种煤后即可直接开始优化
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4" id="blendingWorkspace">
+            <div class="col-xl-7">
+                <div class="card coal-card">
+                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <span><i class="bi bi-layers me-2"></i>煤种选择</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-light text-dark coal-selection-badge">
+                                已选 <span id="selectedCount">0</span> 种
+                            </span>
                             <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#algorithmSettingsModal">
                                 <i class="bi bi-gear-wide-connected me-1"></i>算法设置
                             </button>
                         </div>
                     </div>
                     <div class="card-body">
-                        <!-- 搜索和筛选 -->
-                        <div class="row mb-3">
+                        <div class="toolbar-panel row mb-3 g-2">
                             <div class="col-md-4">
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -97,216 +146,150 @@
                                 </select>
                             </div>
                             <div class="col-md-3">
-                                <button class="btn btn-outline-primary me-2" onclick="searchCoalsForBlending()">
-                                    <i class="bi bi-search me-1"></i>搜索
-                                </button>
-                                <button class="btn btn-outline-secondary" onclick="refreshCoalList()">
-                                    <i class="bi bi-arrow-repeat me-1"></i>刷新
-                                </button>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-outline-primary flex-grow-1" id="coalSearchBtn">
+                                        <i class="bi bi-search me-1"></i>搜索
+                                    </button>
+                                    <button class="btn btn-outline-secondary" id="coalRefreshBtn">
+                                        <i class="bi bi-arrow-repeat me-1"></i>刷新
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="table-responsive">
-                            <table class="table table-hover coal-table">
+                        <div class="coal-selection-strip">
+                            <div class="coal-selection-strip__label">已选煤种预览</div>
+                            <div class="coal-selection-strip__content">
+                                <div class="selected-coal-preview" id="selectedCoalInlinePreview">
+                                    <span class="text-muted small">尚未选择煤种</span>
+                                </div>
+                                <div class="coal-selection-strip__hint">左侧勾选煤种后，右侧约束摘要和结论卡会同步更新。</div>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive coal-table-shell">
+                            <table class="table table-hover coal-table align-middle">
                                 <thead>
                                     <tr>
                                         <th scope="col">选择</th>
-                                        <th scope="col">煤种名称</th>
-                                        <th scope="col">煤种类型</th>
-                                        <th scope="col">价格(元/吨)</th>
-                                        <th scope="col">热值(kcal/kg)</th>
-                                        <th scope="col">灰分(%)</th>
-                                        <th scope="col">挥发分(%)</th>
-                                        <th scope="col">全硫(%)</th>
+                                        <th scope="col">煤种信息</th>
+                                        <th scope="col" class="metric-col">价格</th>
+                                        <th scope="col" class="metric-col">热值</th>
+                                        <th scope="col" class="metric-col">灰分</th>
+                                        <th scope="col" class="metric-col">挥发分</th>
+                                        <th scope="col" class="metric-col">全硫</th>
                                         <th scope="col">配比约束(%)</th>
                                         <th scope="col">操作</th>
                                     </tr>
                                 </thead>
                                 <tbody id="coalSelectionTableBody">
-                                    <!-- 动态加载数据 -->
+                                    <tr>
+                                        <td colspan="9" class="text-center text-muted">加载中...</td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
-                        
-                        <!-- 分页控件 -->
-                        <div class="d-flex justify-content-between align-items-center mt-3">
+
+                        <div class="d-flex justify-content-between align-items-center mt-3 coal-table-footer flex-wrap gap-2">
                             <div>
-                                已选择 <span class="badge bg-success" id="selectedCount">0</span> 种煤 |
+                                已选择 <span class="badge bg-success" id="selectedCountFooter">0</span> 种煤 |
                                 显示第 <span id="coalStartIndex">0</span> - <span id="coalEndIndex">0</span> 条，共 <span id="coalTotalItems">0</span> 条记录
                             </div>
                             <nav aria-label="煤种页码导航">
-                                <ul class="pagination mb-0" id="coalPagination">
-                                    <!-- 分页按钮动态生成 -->
-                                </ul>
+                                <ul class="pagination mb-0" id="coalPagination"></ul>
                             </nav>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- 约束条件设置 -->
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <div class="card constraint-card">
-                    <div class="card-header">
-                        <i class="bi bi-shield-check me-2"></i>约束条件设置
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <!-- 热值约束 -->
-                            <div class="col-md-4 mb-3">
-                                <h6 class="mb-3">热值约束 (kcal/kg)</h6>
-                                <div class="input-group mb-2">
-                                    <span class="input-group-text">目标值</span>
-                                    <input type="number" class="form-control" id="heatTarget" value="6000">
-                                </div>
-                                <div class="input-group mb-2">
-                                    <span class="input-group-text">下限</span>
-                                    <input type="number" class="form-control" id="heatMin" value="5800">
-                                </div>
-                                <div class="input-group">
-                                    <span class="input-group-text">上限</span>
-                                    <input type="number" class="form-control" id="heatMax" value="6500">
-                                </div>
-                            </div>
-                            
-                            <!-- 灰分约束 -->
-                            <div class="col-md-4 mb-3">
-                                <h6 class="mb-3">灰分约束 (%)</h6>
-                                <div class="input-group mb-2">
-                                    <span class="input-group-text">下限</span>
-                                    <input type="number" class="form-control" id="ashMin" value="8.0" step="0.1">
-                                </div>
-                                <div class="input-group">
-                                    <span class="input-group-text">上限</span>
-                                    <input type="number" class="form-control" id="ashMax" value="18.0" step="0.1">
-                                </div>
-                            </div>
-                            
-                            <!-- 挥发分约束 -->
-                            <div class="col-md-4 mb-3">
-                                <h6 class="mb-3">挥发分约束 (%)</h6>
-                                <div class="input-group mb-2">
-                                    <span class="input-group-text">下限</span>
-                                    <input type="number" class="form-control" id="volatileMin" value="15.0" step="0.1">
-                                </div>
-                                <div class="input-group">
-                                    <span class="input-group-text">上限</span>
-                                    <input type="number" class="form-control" id="volatileMax" value="35.0" step="0.1">
-                                </div>
-                            </div>
-                            
-                            <!-- 固定碳约束 -->
-                            <div class="col-md-4 mb-3">
-                                <h6 class="mb-3">固定碳约束 (%)</h6>
-                                <div class="input-group mb-2">
-                                    <span class="input-group-text">下限</span>
-                                    <input type="number" class="form-control" id="fixedCarbonMin" value="55.0" step="0.1">
-                                </div>
-                                <div class="input-group">
-                                    <span class="input-group-text">上限</span>
-                                    <input type="number" class="form-control" id="fixedCarbonMax" value="75.0" step="0.1">
-                                </div>
-                            </div>
-                            
-                            <!-- 硫含量约束 -->
-                            <div class="col-md-4 mb-3">
-                                <h6 class="mb-3">硫含量约束 (%)</h6>
-                                <div class="input-group mb-2">
-                                    <span class="input-group-text">下限</span>
-                                    <input type="number" class="form-control" id="sulfurMin" value="0.4" step="0.01">
-                                </div>
-                                <div class="input-group">
-                                    <span class="input-group-text">上限</span>
-                                    <input type="number" class="form-control" id="sulfurMax" value="0.8" step="0.01">
-                                </div>
-                            </div>
-                            
-                            <!-- 价格约束 -->
-                            <div class="col-md-4 mb-3">
-                                <h6 class="mb-3">价格约束 (元/吨)</h6>
-                                <div class="input-group mb-2">
-                                    <span class="input-group-text">下限</span>
-                                    <input type="number" class="form-control" id="priceMin" value="450">
-                                </div>
-                                <div class="input-group">
-                                    <span class="input-group-text">上限</span>
-                                    <input type="number" class="form-control" id="priceMax" value="800">
-                                </div>
-                            </div>
+            <div class="col-xl-5">
+                <div class="blending-sticky-column">
+                    <div class="card result-card sidebar-summary-card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <span><i class="bi bi-lightning-charge me-2"></i>决策面板</span>
+                            <span class="decision-badge" id="sidebarResultBadge" data-tone="pending">待计算</span>
                         </div>
-                        
-                        <!-- 配比约束设置 -->
-                        <div class="row">
-                            <div class="col-md-12">
-                                <h6 class="mb-3">
-                                    <i class="bi bi-gear me-2"></i>配比约束设置
-                                    <small class="text-muted ms-2">设置每种煤的配比上下限</small>
-                                </h6>
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <div class="card global-constraints-card">
-                                            <div class="card-body">
-                                                <h6 class="card-title mb-3">全局配比约束</h6>
-                                                <div class="row">
-                                                    <div class="col-md-6">
-                                                        <div class="input-group mb-2">
-                                                            <span class="input-group-text">下限 (%)</span>
-                                                            <input type="number" class="form-control" id="globalRatioMin" value="5" min="0" max="100" step="0.1">
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <div class="input-group mb-2">
-                                                            <span class="input-group-text">上限 (%)</span>
-                                                            <input type="number" class="form-control" id="globalRatioMax" value="80" min="0" max="100" step="0.1">
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="form-text">
-                                                    <i class="bi bi-info-circle me-1"></i>
-                                                    全局配比约束将应用于所有选中的煤种
-                                                </div>
-                                                <div class="mt-2">
-                                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="applyGlobalRatioConstraints()">
-                                                        <i class="bi bi-arrow-repeat me-1"></i>应用到所有煤种
-                                                    </button>
-                                                </div>
-                                            </div>
+                        <div class="card-body">
+                            <div class="sidebar-summary-block sidebar-summary-block--hero">
+                                <div class="summary-label">本次结果结论</div>
+                                <div class="decision-overview">
+                                    <div>
+                                        <div class="quick-result-status" id="sidebarResultStatus">等待优化计算</div>
+                                        <div class="quick-result-diagnosis" id="sidebarResultDiagnosis">
+                                            选择至少两种煤并检查约束后开始优化，这里会先显示结论摘要。
                                         </div>
                                     </div>
-                                    <div class="col-md-6 mb-3">
-                                        <div class="card constraints-info-card">
-                                            <div class="card-body">
-                                                <h6 class="card-title mb-3">配比约束说明</h6>
-                                                <ul class="list-unstyled mb-0">
-                                                    <li><i class="bi bi-check-circle text-success me-2"></i>配比范围：0% - 100%</li>
-                                                    <li><i class="bi bi-check-circle text-success me-2"></i>默认值：下限 5%，上限 80%</li>
-                                                    <li><i class="bi bi-check-circle text-success me-2"></i>所有选中煤种配比总和必须为 100%</li>
-                                                    <li><i class="bi bi-check-circle text-success me-2"></i>可为每种煤设置独立的配比约束</li>
-                                                </ul>
-                                            </div>
-                                        </div>
+                                    <div class="decision-overview__meta">
+                                        <span class="summary-chip summary-chip--muted" id="sidebarResultMeta">尚无计算结果</span>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        
-                        <!-- 优化目标和开始按钮 -->
-                        <hr>
-                        <div class="row">
-                            <div class="col-md-6 offset-md-3">
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold">优化目标</label>
-                                    <select class="form-select" id="optimizationTarget">
-                                        <option value="喷煤性价比最优" selected>喷煤性价比最优（可行域最低成本）</option>
-                                    </select>
+
+                            <div class="sidebar-summary-grid">
+                                <div class="sidebar-summary-block">
+                                    <div class="summary-label">已选煤种</div>
+                                    <div class="summary-value">
+                                        <span id="sidebarSelectedCount">0</span> 种
+                                    </div>
+                                    <div class="selected-coal-preview" id="selectedCoalPreview">
+                                        <span class="text-muted small">尚未选择煤种</span>
+                                    </div>
                                 </div>
-                                <div class="d-grid">
-                                    <button type="button" class="btn btn-success btn-lg" onclick="startOptimization(this)">
-                                        <i class="bi bi-play-circle me-2"></i>开始优化计算
-                                    </button>
+
+                                <div class="sidebar-summary-block">
+                                    <div class="summary-label">当前约束摘要</div>
+                                    <div class="constraint-quick-summary" id="constraintQuickSummary">
+                                        <div class="summary-chip">热值 6000 - 7800</div>
+                                        <div class="summary-chip">灰分 0 - 20</div>
+                                        <div class="summary-chip">硫分 0 - 1.2</div>
+                                        <div class="summary-chip">价格 0 - 1500</div>
+                                    </div>
                                 </div>
+                            </div>
+
+                            <div class="sidebar-summary-block sidebar-summary-block--action">
+                                <div class="summary-label">约束与求解设置</div>
+                                <div class="constraint-edit-summary">
+                                    当前约束与优化目标已改为启动前模态确认，右侧保留摘要，完整设置在计算前统一调整。
+                                </div>
+                                <button type="button" class="btn btn-outline-secondary w-100 open-constraint-settings-btn" data-open-reason="edit">
+                                    <i class="bi bi-sliders me-2"></i>编辑约束与求解设置
+                                </button>
+                            </div>
+
+                            <div class="sidebar-summary-block sidebar-summary-block--highlight">
+                                <div class="summary-label">关键指标</div>
+                                <div class="quick-result-metrics">
+                                    <div class="metric-item">
+                                        <span class="metric-label">目标</span>
+                                        <span class="metric-value" id="sidebarResultObjective">喷煤性价比最优</span>
+                                    </div>
+                                    <div class="metric-item">
+                                        <span class="metric-label">吨煤成本</span>
+                                        <span class="metric-value" id="sidebarResultPrice">--</span>
+                                    </div>
+                                    <div class="metric-item">
+                                        <span class="metric-label">综合热值</span>
+                                        <span class="metric-value" id="sidebarResultHeat">--</span>
+                                    </div>
+                                    <div class="metric-item">
+                                        <span class="metric-label">方案状态</span>
+                                        <span class="metric-value" id="sidebarResultFeasibility">待计算</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-none d-xl-grid gap-2">
+                                <button type="button" class="btn btn-success btn-lg start-optimization-btn" data-action="start-optimization" data-open-reason="start">
+                                    <i class="bi bi-play-circle me-2"></i>开始优化计算
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" id="scrollToResultsBtn" disabled>
+                                    <i class="bi bi-arrow-down-circle me-2"></i>查看详细结果
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#algorithmSettingsModal">
+                                    <i class="bi bi-sliders2 me-2"></i>查看算法设置
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -314,33 +297,68 @@
             </div>
         </div>
 
-        <!-- 优化结果展示 -->
-        <div class="row mb-4">
+        <div class="row mb-4" id="resultsSection">
             <div class="col-md-12">
                 <div class="card result-card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span><i class="bi bi-bar-chart-line me-2"></i>优化结果</span>
+                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div>
-                            <div class="d-flex align-items-center">
-                                <button class="btn btn-sm btn-outline-primary me-2" id="exportReportBtn" disabled>
-                                    <i class="bi bi-download me-1"></i>导出报告
-                                </button>
-                                <button class="btn btn-sm btn-outline-secondary" id="copyShareResultBtn" disabled>
-                                    <i class="bi bi-clipboard-check me-1"></i>复制分享
-                                </button>
-                            </div>
+                            <div class="results-header-title"><i class="bi bi-bar-chart-line me-2"></i>推荐方案详情</div>
+                            <div class="results-header-subtitle">右侧先看结论，这里展开查看配比、指标和约束诊断明细。</div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <button class="btn btn-sm btn-outline-light" id="backToWorkspaceBtn">
+                                <i class="bi bi-arrow-up-circle me-1"></i>返回设置区
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary" id="exportReportBtn" disabled>
+                                <i class="bi bi-download me-1"></i>导出报告
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" id="copyShareResultBtn" disabled>
+                                <i class="bi bi-clipboard-check me-1"></i>复制分享
+                            </button>
                         </div>
                     </div>
                     <div class="card-body">
+                        <div class="results-detail-banner">
+                            <div class="results-detail-banner__eyebrow">详细区</div>
+                            <div class="results-detail-banner__text">这里保留完整配比、指标和约束诊断，用于确认结论、导出报告和继续下钻。</div>
+                        </div>
+                        <div class="results-overview-grid">
+                            <div class="result-overview-card result-overview-card--status">
+                                <div class="result-overview-card__label">方案结论</div>
+                                <div class="result-overview-card__value" id="resultsHeroStatus">待计算</div>
+                                <div class="result-overview-card__hint" id="resultsHeroStatusHint">运行优化后，这里会给出是否可直接投用的判断。</div>
+                            </div>
+                            <div class="result-overview-card">
+                                <div class="result-overview-card__label">吨煤成本</div>
+                                <div class="result-overview-card__value" id="resultsHeroCost">--</div>
+                                <div class="result-overview-card__hint">优先关注成本与热值是否同时满足约束。</div>
+                            </div>
+                            <div class="result-overview-card">
+                                <div class="result-overview-card__label">综合热值</div>
+                                <div class="result-overview-card__value" id="resultsHeroHeat">--</div>
+                                <div class="result-overview-card__hint">用于快速判断是否落在目标工艺窗口内。</div>
+                            </div>
+                            <div class="result-overview-card">
+                                <div class="result-overview-card__label">约束 / 算法</div>
+                                <div class="result-overview-card__value" id="resultsHeroConstraint">待诊断</div>
+                                <div class="result-overview-card__hint" id="resultsHeroAlgorithm">等待生成约束满足情况与计算摘要。</div>
+                            </div>
+                        </div>
                         <div class="row">
-                            <!-- 最优配比 -->
                             <div class="col-lg-4 mb-4">
                                 <div class="result-section">
-                                    <h5 class="mb-3">最优混煤配比</h5>
+                                    <div class="result-section__header">
+                                        <div>
+                                            <div class="result-section__eyebrow">配比详情</div>
+                                            <h5 class="mb-0">最优混煤配比</h5>
+                                        </div>
+                                    </div>
                                     <div class="chart-container" id="ratioChart">
-                                        <!-- 这里将通过JavaScript插入饼图 -->
-                                        <div class="d-flex justify-content-center align-items-center h-100">
-                                            <p class="text-muted">请先运行优化计算</p>
+                                        <div class="result-empty-state d-flex justify-content-center align-items-center h-100">
+                                            <div class="text-center">
+                                                <p class="mb-2 fw-semibold">等待生成推荐配比</p>
+                                                <p class="text-muted mb-0">选择至少两种煤并检查约束后开始优化</p>
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="table-responsive">
@@ -354,26 +372,32 @@
                                             </thead>
                                             <tbody>
                                                 <tr>
-                                                    <td colspan="3" class="text-center text-muted">请先运行优化计算</td>
+                                                    <td colspan="3" class="text-center text-muted">完成优化后，这里会展示推荐配比及占比进度</td>
                                                 </tr>
                                             </tbody>
                                         </table>
                                     </div>
                                 </div>
                             </div>
-                            
-                            <!-- 混煤性能 -->
+
                             <div class="col-lg-4 mb-4">
                                 <div class="result-section">
-                                    <h5 class="mb-3">喷煤性价比结果</h5>
+                                    <div class="result-section__header">
+                                        <div>
+                                            <div class="result-section__eyebrow">性能详情</div>
+                                            <h5 class="mb-0">喷煤性价比结果</h5>
+                                        </div>
+                                    </div>
                                     <div class="chart-container" id="performanceChart">
-                                        <!-- 这里将通过JavaScript插入雷达图 -->
-                                        <div class="d-flex justify-content-center align-items-center h-100">
-                                            <p class="text-muted">请先运行优化计算</p>
+                                        <div class="result-empty-state d-flex justify-content-center align-items-center h-100">
+                                            <div class="text-center">
+                                                <p class="mb-2 fw-semibold">等待关键指标</p>
+                                                <p class="text-muted mb-0">选择至少两种煤并检查约束后开始优化</p>
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="table-responsive">
-                                        <table class="table table-sm">
+                                        <table class="table table-sm result-kpi-table">
                                             <tbody>
                                                 <tr>
                                                     <th>混煤总成本:</th>
@@ -412,15 +436,21 @@
                                     </div>
                                 </div>
                             </div>
-                            
-                            <!-- 约束满足情况 -->
+
                             <div class="col-lg-4 mb-4">
                                 <div class="result-section">
-                                    <h5 class="mb-3">约束满足情况</h5>
+                                    <div class="result-section__header">
+                                        <div>
+                                            <div class="result-section__eyebrow">约束详情</div>
+                                            <h5 class="mb-0">约束满足情况</h5>
+                                        </div>
+                                    </div>
                                     <div class="chart-container" id="constraintChart">
-                                        <!-- 这里将通过JavaScript插入条形图 -->
-                                        <div class="d-flex justify-content-center align-items-center h-100">
-                                            <p class="text-muted">请先运行优化计算</p>
+                                        <div class="result-empty-state d-flex justify-content-center align-items-center h-100">
+                                            <div class="text-center">
+                                                <p class="mb-2 fw-semibold">等待约束诊断</p>
+                                                <p class="text-muted mb-0">选择至少两种煤并检查约束后开始优化</p>
+                                            </div>
                                         </div>
                                     </div>
                                     <div>
@@ -431,11 +461,22 @@
                                             </span>
                                         </div>
                                     </div>
-                                    <div class="mt-3">
+                                    <div class="algorithm-metrics-panel mt-3">
                                         <h6 class="mb-2">算法性能:</h6>
-                                        <p><strong>迭代次数:</strong> <span class="iterations">--</span></p>
-                                        <p><strong>计算耗时:</strong> <span class="time-taken">--</span>秒</p>
-                                        <p><strong>适应度值:</strong> <span class="fitness-value">--</span></p>
+                                        <div class="algorithm-metrics-list">
+                                            <div class="algorithm-metric-item">
+                                                <span>迭代次数</span>
+                                                <strong><span class="iterations">--</span></strong>
+                                            </div>
+                                            <div class="algorithm-metric-item">
+                                                <span>计算耗时</span>
+                                                <strong><span class="time-taken">--</span> 秒</strong>
+                                            </div>
+                                            <div class="algorithm-metric-item">
+                                                <span>适应度值</span>
+                                                <strong><span class="fitness-value">--</span></strong>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -446,7 +487,207 @@
         </div>
     </div>
 
-    <!-- 模态框：煤种详情 -->
+    <div class="mobile-action-bar d-xl-none">
+        <div class="mobile-action-bar__summary">
+            已选 <span id="mobileSelectedCount">0</span> 种煤
+        </div>
+        <div class="mobile-action-bar__buttons">
+            <button type="button" class="btn btn-success btn-sm start-optimization-btn" data-action="start-optimization" data-open-reason="start">
+                <i class="bi bi-play-circle me-1"></i>开始优化
+            </button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="scrollToResultsBtnMobile" disabled>
+                <i class="bi bi-arrow-down-circle me-1"></i>查看结果
+            </button>
+        </div>
+    </div>
+
+    <div class="modal fade" id="constraintSettingsModal" tabindex="-1" aria-labelledby="constraintSettingsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable constraint-settings-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title" id="constraintSettingsModalLabel">约束与求解设置</h5>
+                        <div class="constraint-settings-modal__subtitle">启动优化前，统一确认工艺边界、全局配比和优化目标。</div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="constraint-settings-modal__summary">
+                        <div class="constraint-settings-summary-card">
+                            <span class="constraint-settings-summary-card__label">已选煤种</span>
+                            <strong class="constraint-settings-summary-card__value"><span id="constraintModalSelectedCount">0</span> 种</strong>
+                            <div class="selected-coal-preview" id="constraintModalSelectedPreview">
+                                <span class="text-muted small">尚未选择煤种</span>
+                            </div>
+                        </div>
+                        <div class="constraint-settings-summary-card">
+                            <span class="constraint-settings-summary-card__label">当前目标</span>
+                            <strong class="constraint-settings-summary-card__value" id="constraintModalObjectiveSummary">喷煤性价比最优</strong>
+                            <div class="constraint-settings-summary-card__hint">确认无误后即可在模态底部直接开始优化计算。</div>
+                        </div>
+                    </div>
+
+                    <div class="autosave-banner">
+                        <div class="small text-muted" id="autoSaveStatus">
+                            使用系统默认配置，修改后将自动保存
+                        </div>
+                    </div>
+
+                    <div class="constraint-stage-card">
+                        <div class="constraint-stage-card__header">
+                            <span class="constraint-stage-card__eyebrow">第一层</span>
+                            <h6 class="mb-1">核心工艺约束</h6>
+                            <p class="mb-0">先锁定生产边界，再在可行域内搜索成本最优解。</p>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <h6 class="mb-3">热值约束 (kcal/kg)</h6>
+                                <div class="input-group mb-2">
+                                    <span class="input-group-text">目标值</span>
+                                    <input type="number" class="form-control constraint-input" id="heatTarget" value="6800">
+                                </div>
+                                <div class="input-group mb-2">
+                                    <span class="input-group-text">下限</span>
+                                    <input type="number" class="form-control constraint-input" id="heatMin" value="6000">
+                                </div>
+                                <div class="input-group">
+                                    <span class="input-group-text">上限</span>
+                                    <input type="number" class="form-control constraint-input" id="heatMax" value="7800">
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <h6 class="mb-3">灰分约束 (%)</h6>
+                                <div class="input-group mb-2">
+                                    <span class="input-group-text">下限</span>
+                                    <input type="number" class="form-control constraint-input" id="ashMin" value="0.0" step="0.1">
+                                </div>
+                                <div class="input-group">
+                                    <span class="input-group-text">上限</span>
+                                    <input type="number" class="form-control constraint-input" id="ashMax" value="20.0" step="0.1">
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <h6 class="mb-3">挥发分约束 (%)</h6>
+                                <div class="input-group mb-2">
+                                    <span class="input-group-text">下限</span>
+                                    <input type="number" class="form-control constraint-input" id="volatileMin" value="8.0" step="0.1">
+                                </div>
+                                <div class="input-group">
+                                    <span class="input-group-text">上限</span>
+                                    <input type="number" class="form-control constraint-input" id="volatileMax" value="40.0" step="0.1">
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <h6 class="mb-3">固定碳约束 (%)</h6>
+                                <div class="input-group mb-2">
+                                    <span class="input-group-text">下限</span>
+                                    <input type="number" class="form-control constraint-input" id="fixedCarbonMin" value="50.0" step="0.1">
+                                </div>
+                                <div class="input-group">
+                                    <span class="input-group-text">上限</span>
+                                    <input type="number" class="form-control constraint-input" id="fixedCarbonMax" value="85.0" step="0.1">
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <h6 class="mb-3">硫含量约束 (%)</h6>
+                                <div class="input-group mb-2">
+                                    <span class="input-group-text">下限</span>
+                                    <input type="number" class="form-control constraint-input" id="sulfurMin" value="0.0" step="0.01">
+                                </div>
+                                <div class="input-group">
+                                    <span class="input-group-text">上限</span>
+                                    <input type="number" class="form-control constraint-input" id="sulfurMax" value="1.2" step="0.01">
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <h6 class="mb-3">价格约束 (元/吨)</h6>
+                                <div class="input-group mb-2">
+                                    <span class="input-group-text">下限</span>
+                                    <input type="number" class="form-control constraint-input" id="priceMin" value="0">
+                                </div>
+                                <div class="input-group">
+                                    <span class="input-group-text">上限</span>
+                                    <input type="number" class="form-control constraint-input" id="priceMax" value="1500">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="constraint-stage-card">
+                        <div class="constraint-stage-card__header">
+                            <span class="constraint-stage-card__eyebrow">第二层</span>
+                            <h6 class="mb-1">全局配比约束</h6>
+                            <p class="mb-0">统一设置单煤配比边界，可一键覆盖到所有已选煤种。</p>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-sm-6">
+                                <div class="input-group">
+                                    <span class="input-group-text">下限</span>
+                                    <input type="number" class="form-control constraint-input" id="globalRatioMin" value="0" min="0" max="100" step="0.1">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="input-group">
+                                    <span class="input-group-text">上限</span>
+                                    <input type="number" class="form-control constraint-input" id="globalRatioMax" value="100" min="0" max="100" step="0.1">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center gap-2 mt-2 flex-wrap">
+                            <div class="form-text mb-0">可一键覆盖所有已缓存煤种的配比上下限</div>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="applyGlobalRatioBtn">
+                                <i class="bi bi-arrow-repeat me-1"></i>应用到所有煤种
+                            </button>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="constraint-stage-card">
+                        <div class="constraint-stage-card__header">
+                            <span class="constraint-stage-card__eyebrow">第三层</span>
+                            <h6 class="mb-1">优化目标与算法入口</h6>
+                            <p class="mb-0">保持现有接口与算法语义不变，只优化前端表达与操作流。</p>
+                        </div>
+                        <div class="constraint-stage-grid">
+                            <div>
+                                <label class="form-label fw-bold">优化目标</label>
+                                <select class="form-select" id="optimizationTarget">
+                                    <option value="喷煤性价比最优" selected>喷煤性价比最优（可行域最低成本）</option>
+                                </select>
+                            </div>
+                            <div class="algorithm-entry-card">
+                                <div class="algorithm-entry-card__title">算法入口</div>
+                                <p class="mb-3">遗传算法参数保持兼容，可按需要查看或微调，不改变现有 API 语义。</p>
+                                <button type="button" class="btn btn-outline-secondary w-100" data-bs-toggle="modal" data-bs-target="#algorithmSettingsModal">
+                                    <i class="bi bi-sliders2 me-2"></i>打开算法设置
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer constraint-settings-modal__footer">
+                    <button type="button" class="btn btn-outline-secondary" id="resetConstraintsBtn">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>恢复默认
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-success btn-lg confirm-optimization-btn" id="confirmOptimizationBtn">
+                        <i class="bi bi-play-circle me-2"></i>开始优化计算
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="coalDetailModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -454,9 +695,7 @@
                     <h5 class="modal-title">煤种详细信息</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body" id="coalDetailContent">
-                    <!-- 煤种详情将动态加载 -->
-                </div>
+                <div class="modal-body" id="coalDetailContent"></div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
                 </div>
@@ -464,7 +703,6 @@
         </div>
     </div>
 
-    <!-- 模态框：算法设置 -->
     <div class="modal fade" id="algorithmSettingsModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -478,84 +716,84 @@
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label">种群大小</label>
-                                <input type="number" class="form-control" id="populationSize" value="500" min="50" max="2000">
+                                <input type="number" class="form-control algorithm-setting-input" id="populationSize" value="500" min="50" max="2000">
                                 <div class="form-text">遗传算法种群大小，影响搜索精度和计算时间</div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">最大迭代次数</label>
-                                <input type="number" class="form-control" id="maxGenerations" value="3000" min="100" max="10000">
+                                <input type="number" class="form-control algorithm-setting-input" id="maxGenerations" value="3000" min="100" max="10000">
                                 <div class="form-text">算法最大迭代次数</div>
                             </div>
                         </div>
-                        
+
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label">变异率</label>
-                                <input type="number" class="form-control" id="mutationRate" value="0.2" step="0.01" min="0" max="1">
+                                <input type="number" class="form-control algorithm-setting-input" id="mutationRate" value="0.2" step="0.01" min="0" max="1">
                                 <div class="form-text">基因变异概率</div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">交叉率</label>
-                                <input type="number" class="form-control" id="crossoverRate" value="0.85" step="0.01" min="0" max="1">
+                                <input type="number" class="form-control algorithm-setting-input" id="crossoverRate" value="0.85" step="0.01" min="0" max="1">
                                 <div class="form-text">个体交叉概率</div>
                             </div>
                         </div>
-                        
+
                         <hr>
                         <h6 class="mb-3">高级参数</h6>
-                        
+
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label">锦标赛大小</label>
-                                <input type="number" class="form-control" id="tournamentSize" value="7" min="2" max="20">
+                                <input type="number" class="form-control algorithm-setting-input" id="tournamentSize" value="7" min="2" max="20">
                                 <div class="form-text">选择父代个体时的锦标赛规模</div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">精英比例</label>
-                                <input type="number" class="form-control" id="eliteRatio" value="0.1" step="0.01" min="0" max="0.5">
+                                <input type="number" class="form-control algorithm-setting-input" id="eliteRatio" value="0.1" step="0.01" min="0" max="0.5">
                                 <div class="form-text">直接进入下一代的最优个体比例</div>
                             </div>
                         </div>
-                        
+
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label">早停耐心值</label>
-                                <input type="number" class="form-control" id="earlyStoppingPatience" value="200" min="50" max="1000">
+                                <input type="number" class="form-control algorithm-setting-input" id="earlyStoppingPatience" value="200" min="50" max="1000">
                                 <div class="form-text">连续多少代无改进后停止迭代</div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">约束惩罚因子</label>
-                                <input type="number" class="form-control" id="constraintPenaltyFactor" value="1500" min="100" max="10000">
+                                <input type="number" class="form-control algorithm-setting-input" id="constraintPenaltyFactor" value="1500" min="100" max="10000">
                                 <div class="form-text">约束违反的惩罚强度</div>
                             </div>
                         </div>
-                        
+
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label">并行工作线程</label>
-                                <input type="number" class="form-control" id="parallelWorkers" value="4" min="1" max="16">
+                                <input type="number" class="form-control algorithm-setting-input" id="parallelWorkers" value="4" min="1" max="16">
                                 <div class="form-text">并行计算使用的线程数</div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">多样性因子</label>
-                                <input type="number" class="form-control" id="diversityFactor" value="0.1" step="0.01" min="0" max="1">
+                                <input type="number" class="form-control algorithm-setting-input" id="diversityFactor" value="0.1" step="0.01" min="0" max="1">
                                 <div class="form-text">种群多样性维护强度</div>
                             </div>
                         </div>
-                        
+
                         <hr>
                         <h6 class="mb-3">特殊选项</h6>
-                        
+
                         <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="adaptiveMutation" checked>
+                            <input class="form-check-input algorithm-setting-input" type="checkbox" id="adaptiveMutation" checked>
                             <label class="form-check-label" for="adaptiveMutation">
                                 启用自适应变异
                             </label>
                             <div class="form-text">根据收敛情况动态调整变异率</div>
                         </div>
-                        
+
                         <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="parallelComputing" checked>
+                            <input class="form-check-input algorithm-setting-input" type="checkbox" id="parallelComputing" checked>
                             <label class="form-check-label" for="parallelComputing">
                                 启用并行计算
                             </label>
@@ -565,14 +803,13 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-outline-primary" onclick="resetAlgorithmSettings()">恢复默认</button>
-                    <button type="button" class="btn btn-primary" onclick="saveAlgorithmSettings()">保存设置</button>
+                    <button type="button" class="btn btn-outline-primary" id="resetAlgorithmSettingsBtn">恢复默认</button>
+                    <button type="button" class="btn btn-primary" id="saveAlgorithmSettingsBtn">保存设置</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- JavaScript 库 -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='js/charts.js') }}"></script>

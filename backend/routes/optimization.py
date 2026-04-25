@@ -36,23 +36,23 @@ def _build_algorithm_params(constraints, selected_coal_ids):
 
     for coal_id in selected_coal_ids:
         coal_constraint = ratio_constraints_data.get(str(coal_id), {})
-        ratio_min_list.append(float(coal_constraint.get('min', 5)) / 100.0)
-        ratio_max_list.append(float(coal_constraint.get('max', 80)) / 100.0)
+        ratio_min_list.append(float(coal_constraint.get('min', 0)) / 100.0)
+        ratio_max_list.append(float(coal_constraint.get('max', 100)) / 100.0)
 
     return {
-        'heat_value': constraints.get('heat_target', 6000),
-        'heat_min': constraints.get('heat_min', 5800),
-        'heat_max': constraints.get('heat_max', 6500),
-        'ash_limit': constraints.get('ash_max', 18.0),
-        'ash_min': constraints.get('ash_min', 8.0),
-        'volatile_min': constraints.get('volatile_min', 15.0),
-        'volatile_max': constraints.get('volatile_max', 35.0),
-        'fixed_carbon_min': constraints.get('fixed_carbon_min', 55.0),
-        'fixed_carbon_max': constraints.get('fixed_carbon_max', 75.0),
-        'sulfur_limit': constraints.get('sulfur_max', 0.8),
-        'sulfur_min': constraints.get('sulfur_min', 0.4),
-        'price_limit': constraints.get('price_max', 800),
-        'price_min': constraints.get('price_min', 450),
+        'heat_value': constraints.get('heat_target', 6800),
+        'heat_min': constraints.get('heat_min', 6000),
+        'heat_max': constraints.get('heat_max', 7800),
+        'ash_limit': constraints.get('ash_max', 20.0),
+        'ash_min': constraints.get('ash_min', 0.0),
+        'volatile_min': constraints.get('volatile_min', 8.0),
+        'volatile_max': constraints.get('volatile_max', 40.0),
+        'fixed_carbon_min': constraints.get('fixed_carbon_min', 50.0),
+        'fixed_carbon_max': constraints.get('fixed_carbon_max', 85.0),
+        'sulfur_limit': constraints.get('sulfur_max', 1.2),
+        'sulfur_min': constraints.get('sulfur_min', 0.0),
+        'price_limit': constraints.get('price_max', 1500),
+        'price_min': constraints.get('price_min', 0),
         'ratio_constraints': {
             'min': ratio_min_list,
             'max': ratio_max_list,
