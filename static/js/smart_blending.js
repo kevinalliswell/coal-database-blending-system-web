@@ -100,6 +100,7 @@ let ratioChartInstance = null;
 let performanceChartInstance = null;
 let constraintChartInstance = null;
 let autoSaveStatusTimer = null;
+let constraintSettingsModalInstance = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeSmartBlendingPage();
@@ -113,6 +114,7 @@ function initializeSmartBlendingPage() {
     setupBlendingEventListeners();
     updateSelectedCoalCount();
     updateConstraintQuickSummary();
+    updateConstraintModalSummary();
     updateQuickResultSummary();
     updateActionButtonsState();
     syncWorkspaceStatus('info', '等待选择煤种，当前配置将在本地自动保存。', '选择至少两种煤后即可直接开始优化');
@@ -398,6 +400,7 @@ function setupBlendingEventListeners() {
     });
 
     document.getElementById('coalTypeFilter')?.addEventListener('change', searchCoalsForBlending);
+    document.getElementById('optimizationTarget')?.addEventListener('change', handleOptimizationTargetChanged);
 
     document.querySelectorAll('.constraint-input').forEach(input => {
         input.addEventListener('change', handleConstraintInputsChanged);
@@ -421,9 +424,17 @@ function setupBlendingEventListeners() {
 
     document.querySelectorAll('.start-optimization-btn').forEach(button => {
         button.addEventListener('click', function() {
-            startOptimization();
+            openConstraintSettingsModal(this.dataset.openReason || 'start');
         });
     });
+
+    document.querySelectorAll('.open-constraint-settings-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            openConstraintSettingsModal(this.dataset.openReason || 'edit');
+        });
+    });
+
+    document.getElementById('confirmOptimizationBtn')?.addEventListener('click', startOptimization);
 }
 
 async function loadCoalsForBlending() {
@@ -594,6 +605,8 @@ function updateSelectedCoalCount() {
 
     renderSelectedCoalPreview('selectedCoalPreview', selectedCoalNames);
     renderSelectedCoalPreview('selectedCoalInlinePreview', selectedCoalNames);
+    renderSelectedCoalPreview('constraintModalSelectedPreview', selectedCoalNames);
+    updateTextContent('constraintModalSelectedCount', count);
 
     const heroSelectedHint = document.getElementById('heroSelectedHint');
     if (heroSelectedHint) {
@@ -607,10 +620,12 @@ function updateSelectedCoalCount() {
     }
 
     if (count >= 2) {
-        syncWorkspaceStatus('info', `已选择 ${count} 种煤，可以直接开始优化。`, '建议先快速检查右侧约束摘要，再启动计算');
+        syncWorkspaceStatus('info', `已选择 ${count} 种煤，可以开始优化。`, '点击开始优化后会先弹出约束与求解设置模态，确认后再执行计算');
     } else if (!latestDisplayedResult) {
         syncWorkspaceStatus('info', '等待选择煤种，当前配置将在本地自动保存。', '选择至少两种煤后即可直接开始优化');
     }
+
+    updateConstraintModalSummary();
 }
 
 function renderSelectedCoalPreview(elementId, selectedCoalNames = [], maxVisible = 6) {
@@ -748,7 +763,14 @@ function handleConstraintInputsChanged() {
     persistPreferences(smartBlendingPreferences);
     invalidateOptimizationResults('约束条件已调整，请重新运行优化计算。');
     updateConstraintQuickSummary();
+    updateConstraintModalSummary();
     syncWorkspaceStatus('info', '约束条件已更新，系统会自动保存本次配置。', '当前仍可继续调整后再开始优化');
+}
+
+function handleOptimizationTargetChanged() {
+    updateConstraintModalSummary();
+    invalidateOptimizationResults('优化目标已调整，请重新运行优化计算。');
+    syncWorkspaceStatus('info', '优化目标已更新。', '确认约束与求解设置后即可开始本次优化');
 }
 
 function syncConstraintPreferencesFromDom() {
@@ -791,6 +813,7 @@ function resetConstraintSettings() {
     applyPreferencesToDom();
     displayCoalsForBlending();
     updateConstraintQuickSummary();
+    updateConstraintModalSummary();
     persistPreferences(smartBlendingPreferences, {
         statusText: '约束条件已恢复为默认值'
     });
@@ -819,6 +842,7 @@ function applyGlobalRatioConstraints() {
     document.getElementById('globalRatioMax').value = globalConstraint.max;
 
     displayCoalsForBlending();
+    updateConstraintModalSummary();
     persistPreferences(smartBlendingPreferences, {
         statusText: `已应用全局配比约束 ${globalConstraint.min}% - ${globalConstraint.max}%`
     });
@@ -985,6 +1009,7 @@ function buildOptimizationRequestData() {
     smartBlendingPreferences.selectedCoalIds = Array.from(selectedCoals);
     persistPreferences(smartBlendingPreferences, { silent: true });
     updateConstraintQuickSummary();
+    updateConstraintModalSummary();
 
     const ratioConstraints = {};
     Array.from(selectedCoals).forEach(coalId => {
@@ -1013,6 +1038,7 @@ async function startOptimization() {
     }
 
     const requestData = buildOptimizationRequestData();
+    hideConstraintSettingsModal();
 
     try {
         optimizationInProgress = true;
@@ -1057,6 +1083,42 @@ async function startOptimization() {
         optimizationInProgress = false;
         updateActionButtonsState();
         hideLoadingState();
+    }
+}
+
+function openConstraintSettingsModal(reason = 'edit') {
+    applyPreferencesToDom();
+    updateConstraintQuickSummary();
+    updateConstraintModalSummary();
+    updateActionButtonsState();
+
+    if (!constraintSettingsModalInstance) {
+        const modalElement = document.getElementById('constraintSettingsModal');
+        if (!modalElement) {
+            return;
+        }
+        constraintSettingsModalInstance = new bootstrap.Modal(modalElement);
+    }
+
+    if (reason === 'start') {
+        syncWorkspaceStatus('info', '请先确认约束与求解设置。', '在弹窗中确认工艺边界、配比约束和优化目标后再开始计算');
+    }
+
+    constraintSettingsModalInstance.show();
+}
+
+function hideConstraintSettingsModal() {
+    const modalElement = document.getElementById('constraintSettingsModal');
+    const modal = bootstrap.Modal.getInstance(modalElement) || constraintSettingsModalInstance;
+    if (modal) {
+        modal.hide();
+    }
+}
+
+function updateConstraintModalSummary() {
+    const objectiveElement = document.getElementById('constraintModalObjectiveSummary');
+    if (objectiveElement) {
+        objectiveElement.textContent = document.getElementById('optimizationTarget')?.value || '喷煤性价比最优';
     }
 }
 
@@ -1789,6 +1851,18 @@ function updateActionButtonsState() {
                 ? '<i class="bi bi-play-circle me-1"></i>开始优化'
                 : '<i class="bi bi-play-circle me-2"></i>开始优化计算');
     });
+
+    document.querySelectorAll('.open-constraint-settings-btn').forEach(button => {
+        button.disabled = optimizationInProgress;
+    });
+
+    const confirmOptimizationBtn = document.getElementById('confirmOptimizationBtn');
+    if (confirmOptimizationBtn) {
+        confirmOptimizationBtn.disabled = !canStart;
+        confirmOptimizationBtn.innerHTML = optimizationInProgress
+            ? '<i class="bi bi-hourglass-split me-2"></i>计算中...'
+            : '<i class="bi bi-play-circle me-2"></i>开始优化计算';
+    }
 
     const scrollButtons = [
         document.getElementById('scrollToResultsBtn'),

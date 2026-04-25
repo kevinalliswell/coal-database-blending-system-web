@@ -482,6 +482,10 @@ body {
     background: linear-gradient(180deg, #ffffff, #f8fbff);
 }
 
+.sidebar-summary-block--action {
+    background: linear-gradient(180deg, #f6f9fd, #eef4fb);
+}
+
 .summary-label {
     font-size: 0.85rem;
     color: var(--text-muted);
@@ -597,6 +601,13 @@ body {
     line-height: 1.6;
 }
 
+.constraint-edit-summary {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    line-height: 1.6;
+    margin-bottom: 0.85rem;
+}
+
 .quick-result-metrics {
     display: grid;
     grid-template-columns: repeat(1, minmax(0, 1fr));
@@ -681,6 +692,65 @@ body {
 .results-detail-banner__text {
     color: var(--text-muted);
     font-size: 0.88rem;
+}
+
+.constraint-settings-modal .modal-content {
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 1rem;
+    overflow: hidden;
+}
+
+.constraint-settings-modal .modal-header {
+    align-items: flex-start;
+}
+
+.constraint-settings-modal .modal-body {
+    background: linear-gradient(180deg, #f8fbff 0%, #f5f8fc 100%);
+}
+
+.constraint-settings-modal__subtitle {
+    font-size: 0.86rem;
+    color: rgba(255, 255, 255, 0.82);
+    margin-top: 0.2rem;
+}
+
+.constraint-settings-modal__summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.constraint-settings-summary-card {
+    padding: 1rem;
+    border-radius: 0.95rem;
+    background: linear-gradient(180deg, #ffffff, #f2f7fd);
+    border: 1px solid #dde7f3;
+}
+
+.constraint-settings-summary-card__label {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-bottom: 0.4rem;
+}
+
+.constraint-settings-summary-card__value {
+    display: block;
+    font-size: 1.08rem;
+    color: var(--primary-deep);
+    font-weight: 800;
+    margin-bottom: 0.45rem;
+}
+
+.constraint-settings-summary-card__hint {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.constraint-settings-modal__footer {
+    justify-content: space-between;
 }
 
 .results-overview-grid {
@@ -980,6 +1050,7 @@ body {
     }
 
     .page-hero__stats,
+    .constraint-settings-modal__summary,
     .results-overview-grid,
     .sidebar-summary-grid,
     .constraint-stage-grid {
