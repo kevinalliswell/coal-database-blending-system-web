@@ -1596,20 +1596,20 @@ function updateQuickResultSummary(status = null, data = null, message = '') {
         return;
     }
 
-    const applySummaryState = ({
-        badgeTone = 'pending',
-        badgeText = '待计算',
-        statusText = '等待优化计算',
-        statusClass = 'quick-result-status',
-        diagnosisText = '运行优化后，这里会显示可行性与约束诊断摘要。',
-        metaText = '尚无计算结果',
-        feasibilityText = '待计算',
-        heroHeadlineText = '等待优化结论',
-        heroHintText = '右侧决策面板会优先显示可行性、成本与关键诊断',
-        overviewStatusClass = '',
-        overviewConstraintText = '待诊断',
-        overviewAlgorithmText = '等待生成约束满足情况与计算摘要。'
-    }) => {
+      const applySummaryState = ({
+          badgeTone = 'pending',
+          badgeText = '待计算',
+          statusText = '等待优化计算',
+          statusClass = 'quick-result-status',
+          diagnosisText = '选择至少两种煤并检查约束后开始优化，这里会先显示结论摘要。',
+          metaText = '尚无计算结果',
+          feasibilityText = '待计算',
+          heroHeadlineText = '等待优化结论',
+          heroHintText = '选择至少两种煤并检查约束后开始优化，系统会先给出是否可直接投用的判断',
+          overviewStatusClass = '',
+          overviewConstraintText = '待诊断',
+          overviewAlgorithmText = '选择至少两种煤并检查约束后开始优化。'
+      }) => {
         statusElement.textContent = statusText;
         statusElement.className = statusClass;
         diagnosisElement.textContent = diagnosisText;
