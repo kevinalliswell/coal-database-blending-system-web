@@ -197,17 +197,18 @@ GET /api/coals/1
 
 - 方法：`POST`
 - 路径：`/optimization`
-- 说明：当前版本统一以“喷煤性价比最优”为主目标，即在满足工艺约束的可行域内求最低成本方案。
+- 说明：当前版本使用 NSGA-II 做多目标 Pareto 优化，在硬约束可行域内同时考虑成本、热值和质量风险，并返回推荐方案与 Pareto 候选方案集。
 
 支持的 `optimization_target`：
 
 - `喷煤性价比最优`
 - `最低成本`
 - `最高性价比`
+- `多目标Pareto最优`
 
 说明：
 
-- `最低成本` 与 `最高性价比` 会映射到相同业务目标
+- `喷煤性价比最优`、`最低成本` 与 `最高性价比` 会兼容映射到 `多目标Pareto最优`
 - `最佳性能` 已下线，请勿再传
 
 请求体示例：
@@ -269,8 +270,8 @@ GET /api/coals/1
   "status": "success",
   "message": "优化计算完成",
   "result": {
-    "objective_type": "pci_cost_effective_v1",
-    "optimization_target": "喷煤性价比最优",
+    "objective_type": "pci_pareto_nsga2_v1",
+    "optimization_target": "多目标Pareto最优",
     "coal_names": ["煤A", "煤B", "煤C"],
     "optimal_ratios": [0.4, 0.35, 0.25],
     "blending_ratio": {
@@ -286,7 +287,36 @@ GET /api/coals/1
     "total_sulfur": 0.58,
     "iterations": 186,
     "time_taken": 1.27,
-    "fitness_value": 612.5,
+    "fitness_value": 0.18,
+    "quality_penalty": 0.18,
+    "objective_values": {
+      "cost": 612.5,
+      "heat": 6020,
+      "quality_penalty": 0.18
+    },
+    "recommended_solution": {
+      "solution_id": "pareto_001",
+      "total_price": 612.5,
+      "total_heat": 6020,
+      "quality_penalty": 0.18,
+      "optimal_ratios": [0.4, 0.35, 0.25],
+      "objective_values": {
+        "cost": 612.5,
+        "heat": 6020,
+        "quality_penalty": 0.18
+      }
+    },
+    "pareto_solutions": [
+      {
+        "solution_id": "pareto_001",
+        "total_price": 612.5,
+        "total_heat": 6020,
+        "total_ash": 11.8,
+        "total_sulfur": 0.58,
+        "quality_penalty": 0.18,
+        "optimal_ratios": [0.4, 0.35, 0.25]
+      }
+    ],
     "is_feasible": true,
     "constraints_satisfied": true,
     "constraint_violations": [],
@@ -300,8 +330,11 @@ GET /api/coals/1
 
 结果字段说明：
 
-- `objective_type`：当前固定为 `pci_cost_effective_v1`
+- `objective_type`：当前固定为 `pci_pareto_nsga2_v1`
 - `optimal_ratios`：按 `coal_names` 顺序返回的小数配比，总和为 `1`
+- `recommended_solution`：系统按归一化理想点距离选出的默认推荐方案
+- `pareto_solutions`：最多 20 个可行、非支配的 Pareto 候选方案
+- `fitness_value`：推荐方案的质量风险值，越小越好
 - `is_feasible`：是否满足全部工艺约束
 - `constraint_violations`：约束违反明细
 - `violation_score`：违约度评分，越小越好

@@ -117,9 +117,7 @@ def _write_title_block(ws, row, result):
     ws.row_dimensions[row].height = 28
     row += 1
 
-    objective_label = '喷煤性价比最优（可行域最低成本）'
-    if result.get('objective_type') and result.get('objective_type') != 'pci_cost_effective_v1':
-        objective_label = result.get('optimization_target') or objective_label
+    objective_label = result.get('optimization_target') or '多目标Pareto最优'
 
     subtitle = (
         f"生成时间：{_display_timestamp(result.get('timestamp'))}    "
@@ -327,9 +325,9 @@ def _write_constraints_block(ws, row, result, constraints):
         row,
         'A',
         '目标函数',
-        '喷煤性价比最优（可行域最低成本）',
+        result.get('optimization_target') or '多目标Pareto最优',
         'E',
-        '适应度值',
+        '质量风险',
         _format_number(result.get('fitness_value'), 4, ''),
     )
     _write_label_value_row(

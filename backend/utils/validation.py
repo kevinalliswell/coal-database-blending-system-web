@@ -89,7 +89,7 @@ def validate_coal_data(data):
 def validate_optimization_params(data):
     """验证优化参数。"""
     errors = []
-    supported_targets = {'喷煤性价比最优', '最低成本', '最高性价比'}
+    supported_targets = {'喷煤性价比最优', '最低成本', '最高性价比', '多目标Pareto最优'}
     deprecated_targets = {'最佳性能'}
 
     def _validate_range(config, min_key, max_key, label):
@@ -117,9 +117,9 @@ def validate_optimization_params(data):
 
     optimization_target = data.get('optimization_target', '喷煤性价比最优')
     if optimization_target in deprecated_targets:
-        errors.append('当前版本仅支持喷煤性价比最优，最佳性能模式已下线')
+        errors.append('当前版本仅支持多目标Pareto最优，最佳性能模式已下线')
     elif optimization_target not in supported_targets:
-        errors.append('不支持的优化目标，请使用喷煤性价比最优')
+        errors.append('不支持的优化目标，请使用多目标Pareto最优')
 
     constraints = data.get('constraints', {})
     _validate_range(constraints, 'heat_min', 'heat_max', '热值')

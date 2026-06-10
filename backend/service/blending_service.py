@@ -422,14 +422,247 @@ class ImprovedGeneticOptimizer:
         return improvement < threshold
 
 
+class NSGA2BlendingOptimizer:
+    """NSGA-II optimizer for constrained multi-objective coal blending."""
+
+    def __init__(self, base_optimizer: ImprovedGeneticOptimizer):
+        self.base_optimizer = base_optimizer
+        self.config = base_optimizer.config
+        self.generations_used = 0
+        self.logger = logging.getLogger(__name__)
+
+    def optimize(
+        self,
+        objective_func,
+        n_coals: int,
+        ratio_limits: Dict,
+        seed_individual: Optional[List[float]] = None,
+    ) -> List[Dict]:
+        random_seed = self.config.get('random_seed')
+        if random_seed is not None:
+            random.seed(int(random_seed))
+            np.random.seed(int(random_seed))
+
+        population_size = int(self.config.get('population_size', 300))
+        max_generations = int(self.config.get('max_generations', 2000))
+        patience = int(self.config.get('early_stopping_patience', 150))
+        threshold = float(self.config.get('convergence_threshold', 1e-6))
+        population = self._create_initial_population(n_coals, ratio_limits, seed_individual)
+
+        best_cost = float('inf')
+        best_heat = float('-inf')
+        best_quality = float('inf')
+        stagnation_count = 0
+
+        evaluated = []
+        for generation in range(max_generations):
+            self.base_optimizer.generation_count = generation
+
+            evaluated = self._evaluate_population(population, objective_func)
+            fronts = self.fast_non_dominated_sort(evaluated)
+            for front in fronts:
+                self.assign_crowding_distance(front, evaluated)
+
+            feasible = [item for item in evaluated if item['is_feasible']]
+            if feasible:
+                gen_best_cost = min(item['total_price'] for item in feasible)
+                gen_best_heat = max(item['total_heat'] for item in feasible)
+                gen_best_quality = min(item['quality_penalty'] for item in feasible)
+                improved = (
+                    gen_best_cost < best_cost - threshold
+                    or gen_best_heat > best_heat + threshold
+                    or gen_best_quality < best_quality - threshold
+                )
+                best_cost = min(best_cost, gen_best_cost)
+                best_heat = max(best_heat, gen_best_heat)
+                best_quality = min(best_quality, gen_best_quality)
+                stagnation_count = 0 if improved else stagnation_count + 1
+            else:
+                stagnation_count += 1
+
+            self.base_optimizer.stagnation_count = stagnation_count
+            self.generations_used = generation + 1
+
+            if generation + 1 >= patience and stagnation_count >= patience:
+                break
+
+            offspring = []
+            while len(offspring) < population_size:
+                parent1 = self._select_parent(evaluated)
+                parent2 = self._select_parent(evaluated)
+                if random.random() < float(self.config.get('crossover_rate', 0.85)):
+                    child1, child2 = self.base_optimizer.crossover(
+                        parent1['ratios'],
+                        parent2['ratios'],
+                        ratio_limits,
+                    )
+                else:
+                    child1 = parent1['ratios'].copy()
+                    child2 = parent2['ratios'].copy()
+
+                offspring.append(self.base_optimizer.mutate(child1, ratio_limits))
+                if len(offspring) < population_size:
+                    offspring.append(self.base_optimizer.mutate(child2, ratio_limits))
+
+            combined = evaluated + self._evaluate_population(offspring, objective_func)
+            population = self._next_generation(combined, population_size)
+
+        if not evaluated:
+            evaluated = self._evaluate_population(population, objective_func)
+        fronts = self.fast_non_dominated_sort(evaluated)
+        if not fronts:
+            return []
+        first_front = fronts[0]
+        self.assign_crowding_distance(first_front, evaluated)
+        return [evaluated[index] for index in first_front if evaluated[index]['is_feasible']]
+
+    def _create_initial_population(
+        self,
+        n_coals: int,
+        ratio_limits: Dict,
+        seed_individual: Optional[List[float]],
+    ) -> List[List[float]]:
+        population = []
+        if seed_individual is not None:
+            repaired_seed = self.base_optimizer.repair_individual(seed_individual, ratio_limits, seed_individual)
+            if repaired_seed is not None:
+                population.append(repaired_seed)
+
+        while len(population) < int(self.config.get('population_size', 300)):
+            use_seed = seed_individual if seed_individual is not None and len(population) < int(self.config.get('population_size', 300)) // 2 else None
+            population.append(self.base_optimizer.create_individual(n_coals, ratio_limits, use_seed))
+
+        return population
+
+    def _evaluate_population(self, population: List[List[float]], objective_func) -> List[Dict]:
+        evaluated = []
+        seen = set()
+        for ratios in population:
+            key = tuple(round(value, 8) for value in ratios)
+            if key in seen:
+                continue
+            seen.add(key)
+            item = objective_func(ratios)
+            item['ratios'] = list(ratios)
+            item['rank'] = 0
+            item['crowding_distance'] = 0.0
+            evaluated.append(item)
+        return evaluated
+
+    def _select_parent(self, evaluated: List[Dict]) -> Dict:
+        tournament_size = min(int(self.config.get('tournament_size', 7)), len(evaluated))
+        candidates = random.sample(evaluated, tournament_size)
+        return min(
+            candidates,
+            key=lambda item: (
+                item.get('rank', float('inf')),
+                -item.get('crowding_distance', 0.0),
+                item.get('violation_score', 0.0),
+            ),
+        )
+
+    def _next_generation(self, evaluated: List[Dict], population_size: int) -> List[List[float]]:
+        fronts = self.fast_non_dominated_sort(evaluated)
+        next_items = []
+        for front in fronts:
+            self.assign_crowding_distance(front, evaluated)
+            front_items = [evaluated[index] for index in front]
+            if len(next_items) + len(front_items) <= population_size:
+                next_items.extend(front_items)
+                continue
+
+            remaining = population_size - len(next_items)
+            front_items.sort(key=lambda item: item.get('crowding_distance', 0.0), reverse=True)
+            next_items.extend(front_items[:remaining])
+            break
+
+        return [item['ratios'].copy() for item in next_items]
+
+    def fast_non_dominated_sort(self, evaluated: List[Dict]) -> List[List[int]]:
+        dominates_map = {index: [] for index in range(len(evaluated))}
+        dominated_counts = {index: 0 for index in range(len(evaluated))}
+        fronts = [[]]
+
+        for left_index, left in enumerate(evaluated):
+            for right_index, right in enumerate(evaluated):
+                if left_index == right_index:
+                    continue
+                if self.dominates(left, right):
+                    dominates_map[left_index].append(right_index)
+                elif self.dominates(right, left):
+                    dominated_counts[left_index] += 1
+
+            if dominated_counts[left_index] == 0:
+                evaluated[left_index]['rank'] = 1
+                fronts[0].append(left_index)
+
+        current = 0
+        while current < len(fronts) and fronts[current]:
+            next_front = []
+            for left_index in fronts[current]:
+                for right_index in dominates_map[left_index]:
+                    dominated_counts[right_index] -= 1
+                    if dominated_counts[right_index] == 0:
+                        evaluated[right_index]['rank'] = current + 2
+                        next_front.append(right_index)
+            current += 1
+            if next_front:
+                fronts.append(next_front)
+
+        return fronts
+
+    @staticmethod
+    def dominates(left: Dict, right: Dict) -> bool:
+        if left['is_feasible'] and not right['is_feasible']:
+            return True
+        if not left['is_feasible'] and right['is_feasible']:
+            return False
+        if not left['is_feasible'] and not right['is_feasible']:
+            return left['violation_score'] < right['violation_score'] - 1e-12
+
+        left_values = left['objective_tuple']
+        right_values = right['objective_tuple']
+        return all(left_value <= right_value + 1e-12 for left_value, right_value in zip(left_values, right_values)) and any(
+            left_value < right_value - 1e-12 for left_value, right_value in zip(left_values, right_values)
+        )
+
+    @staticmethod
+    def assign_crowding_distance(front: List[int], evaluated: List[Dict]):
+        if not front:
+            return
+        for index in front:
+            evaluated[index]['crowding_distance'] = 0.0
+
+        objective_count = len(evaluated[front[0]]['objective_tuple'])
+        if len(front) <= 2:
+            for index in front:
+                evaluated[index]['crowding_distance'] = float('inf')
+            return
+
+        for objective_index in range(objective_count):
+            sorted_front = sorted(front, key=lambda index: evaluated[index]['objective_tuple'][objective_index])
+            evaluated[sorted_front[0]]['crowding_distance'] = float('inf')
+            evaluated[sorted_front[-1]]['crowding_distance'] = float('inf')
+            min_value = evaluated[sorted_front[0]]['objective_tuple'][objective_index]
+            max_value = evaluated[sorted_front[-1]]['objective_tuple'][objective_index]
+            if abs(max_value - min_value) <= 1e-12:
+                continue
+
+            for position in range(1, len(sorted_front) - 1):
+                previous_value = evaluated[sorted_front[position - 1]]['objective_tuple'][objective_index]
+                next_value = evaluated[sorted_front[position + 1]]['objective_tuple'][objective_index]
+                evaluated[sorted_front[position]]['crowding_distance'] += (next_value - previous_value) / (max_value - min_value)
+
+
 class OptimizedSmartBlendingAlgorithm:
     """喷煤工艺导向的混煤优化算法。"""
 
-    OBJECTIVE_TYPE = 'pci_cost_effective_v1'
+    OBJECTIVE_TYPE = 'pci_pareto_nsga2_v1'
     OBJECTIVE_ALIASES = {
-        '喷煤性价比最优': '喷煤性价比最优',
-        '最低成本': '喷煤性价比最优',
-        '最高性价比': '喷煤性价比最优',
+        '喷煤性价比最优': '多目标Pareto最优',
+        '最低成本': '多目标Pareto最优',
+        '最高性价比': '多目标Pareto最优',
+        '多目标Pareto最优': '多目标Pareto最优',
     }
 
     def __init__(self):
@@ -439,7 +672,7 @@ class OptimizedSmartBlendingAlgorithm:
     def normalize_optimization_target(self, optimization_target: Optional[str]) -> str:
         target = optimization_target or '喷煤性价比最优'
         if target == '最佳性能':
-            raise ValueError('当前版本仅支持喷煤性价比最优')
+            raise ValueError('当前版本仅支持多目标Pareto最优')
         if target not in self.OBJECTIVE_ALIASES:
             raise ValueError(f'不支持的优化目标: {target}')
         return self.OBJECTIVE_ALIASES[target]
@@ -514,8 +747,8 @@ class OptimizedSmartBlendingAlgorithm:
 
         seed_ratios = feasible_seed['ratios']
 
-        def fitness_function(individual):
-            return self._evaluate_solution(
+        def objective_function(individual):
+            evaluation = self._evaluate_solution(
                 ratios=individual,
                 coal_names=coal_names,
                 prices=prices,
@@ -525,95 +758,78 @@ class OptimizedSmartBlendingAlgorithm:
                 fixed_carbons=fixed_carbons,
                 sulfur_contents=sulfur_contents,
                 params=params,
-            )['fitness']
+            )
+            quality_penalty = self._calculate_quality_penalty(evaluation, params)
+            evaluation['quality_penalty'] = quality_penalty
+            evaluation['objective_values'] = {
+                'cost': evaluation['total_price'],
+                'heat': evaluation['total_heat'],
+                'quality_penalty': quality_penalty,
+            }
+            evaluation['objective_tuple'] = (
+                evaluation['total_price'],
+                -evaluation['total_heat'],
+                quality_penalty,
+            )
+            evaluation['fitness'] = quality_penalty if evaluation['is_feasible'] else evaluation['fitness']
+            return evaluation
 
-        optimal_ratios, best_fitness = self.optimizer.optimize(
-            fitness_function,
+        nsga_optimizer = NSGA2BlendingOptimizer(self.optimizer)
+        pareto_items = nsga_optimizer.optimize(
+            objective_function,
             n_coals=n_coals,
             ratio_limits=ratio_limits,
             seed_individual=seed_ratios,
         )
 
-        if optimal_ratios is None:
+        if not pareto_items:
             return {
                 'status': 'search_failed',
-                'message': '可行域存在，但遗传算法未能生成可用解',
+                'message': '可行域存在，但NSGA-II未能生成Pareto可行解',
                 'coal_results': [],
                 'summary': {
                     'objective_type': self.OBJECTIVE_TYPE,
                     'optimization_target': canonical_target,
                     'fitness_score': float('inf'),
-                    'generations_used': len(self.optimizer.fitness_history),
+                    'generations_used': nsga_optimizer.generations_used,
                     'is_feasible': False,
                     'violation_score': None,
                     'constraint_violations': [],
                     'active_constraints': [],
-                    'diagnosis': ['遗传算法未返回任何候选解'],
+                    'diagnosis': ['NSGA-II未返回任何可行候选解'],
                 },
             }
 
-        seed_evaluation = self._evaluate_solution(
-            seed_ratios,
-            coal_names,
-            prices,
-            heat_values,
-            ash_contents,
-            volatile_matters,
-            fixed_carbons,
-            sulfur_contents,
-            params,
+        pareto_solutions = self._build_pareto_solutions(
+            pareto_items=pareto_items,
+            coal_names=coal_names,
         )
-        ga_evaluation = self._evaluate_solution(
-            optimal_ratios,
-            coal_names,
-            prices,
-            heat_values,
-            ash_contents,
-            volatile_matters,
-            fixed_carbons,
-            sulfur_contents,
-            params,
-        )
-
-        final_ratios = seed_ratios
-        final_evaluation = seed_evaluation
-
-        if not final_evaluation['is_feasible']:
+        if not pareto_solutions:
             return {
                 'status': 'search_failed',
-                'message': '可行域存在，但搜索结果未满足全部约束',
+                'message': '可行域存在，但Pareto前沿中没有满足约束的候选方案',
                 'coal_results': [],
                 'summary': {
                     'objective_type': self.OBJECTIVE_TYPE,
                     'optimization_target': canonical_target,
-                    'fitness_score': float(best_fitness),
-                    'generations_used': len(self.optimizer.fitness_history),
+                    'fitness_score': float('inf'),
+                    'generations_used': nsga_optimizer.generations_used,
                     'is_feasible': False,
-                    'violation_score': final_evaluation['violation_score'],
-                    'constraint_violations': final_evaluation['constraint_violations'],
-                    'active_constraints': final_evaluation['active_constraints'],
+                    'violation_score': None,
+                    'constraint_violations': [],
+                    'active_constraints': [],
                     'diagnosis': ['请放宽约束或增加候选煤种后重试'],
                 },
             }
 
-        coal_results = []
-        for index, coal in enumerate(coals):
-            ratio_percent = final_ratios[index] * 100.0
-            if ratio_percent < 0.1:
-                continue
+        recommended_solution = self._choose_recommended_solution(pareto_solutions)
+        final_ratios = recommended_solution['optimal_ratios']
+        final_evaluation = next(
+            item for item in pareto_items
+            if tuple(round(value, 8) for value in item['ratios']) == tuple(round(value, 8) for value in final_ratios)
+        )
 
-            coal_results.append({
-                'name': coal.get('name', f'煤种{index + 1}'),
-                'ratio': ratio_percent,
-                'price_contribution': float(final_ratios[index] * prices[index]),
-                'heat_contribution': float(final_ratios[index] * heat_values[index]),
-                'ash_contribution': float(final_ratios[index] * ash_contents[index]),
-                'volatile_contribution': float(final_ratios[index] * volatile_matters[index]),
-                'fixed_carbon_contribution': float(final_ratios[index] * fixed_carbons[index]),
-                'sulfur_contribution': float(final_ratios[index] * sulfur_contents[index]),
-            })
-
-        coal_results.sort(key=lambda item: item['ratio'], reverse=True)
+        coal_results = self._build_coal_results(coals, final_ratios, prices, heat_values, ash_contents, volatile_matters, fixed_carbons, sulfur_contents)
 
         summary = {
             'objective_type': self.OBJECTIVE_TYPE,
@@ -625,21 +841,161 @@ class OptimizedSmartBlendingAlgorithm:
             'total_fixed_carbon': final_evaluation['total_fixed_carbon'],
             'total_sulfur': final_evaluation['total_sulfur'],
             'performance_price_ratio': final_evaluation['performance_price_ratio'],
-            'fitness_score': final_evaluation['fitness'],
-            'generations_used': len(self.optimizer.fitness_history),
+            'fitness_score': recommended_solution['quality_penalty'],
+            'generations_used': nsga_optimizer.generations_used,
             'is_feasible': True,
             'violation_score': 0.0,
             'constraint_violations': [],
             'active_constraints': final_evaluation['active_constraints'],
-            'diagnosis': feasible_seed['diagnosis'],
+            'diagnosis': feasible_seed['diagnosis'] + ['NSGA-II已生成多目标Pareto候选方案'],
+            'quality_penalty': recommended_solution['quality_penalty'],
+            'objective_values': recommended_solution['objective_values'],
+            'recommended_solution': recommended_solution,
+            'pareto_solutions': pareto_solutions,
         }
 
         return {
             'status': 'success',
-            'message': '喷煤性价比优化完成',
+            'message': '多目标Pareto优化完成',
             'coal_results': coal_results,
             'summary': summary,
         }
+
+    def _build_pareto_solutions(self, pareto_items: List[Dict], coal_names: List[str]) -> List[Dict]:
+        sorted_items = sorted(
+            [item for item in pareto_items if item.get('is_feasible')],
+            key=lambda item: (
+                item['total_price'],
+                -item['total_heat'],
+                item['quality_penalty'],
+            ),
+        )
+        max_solutions = int(self.optimizer.config.get('pareto_solution_limit', 20))
+        solutions = []
+        for index, item in enumerate(sorted_items[:max_solutions], start=1):
+            ratios = [float(value) for value in item['ratios']]
+            solutions.append({
+                'solution_id': f'pareto_{index:03d}',
+                'rank': int(item.get('rank', 1)),
+                'crowding_distance': self._safe_float(item.get('crowding_distance', 0.0)),
+                'coal_names': coal_names,
+                'optimal_ratios': ratios,
+                'blending_ratio': {
+                    coal_name: ratios[coal_index]
+                    for coal_index, coal_name in enumerate(coal_names)
+                },
+                'total_price': item['total_price'],
+                'total_heat': item['total_heat'],
+                'total_ash': item['total_ash'],
+                'total_volatile': item['total_volatile'],
+                'total_fixed_carbon': item['total_fixed_carbon'],
+                'total_sulfur': item['total_sulfur'],
+                'performance_price_ratio': item['performance_price_ratio'],
+                'quality_penalty': item['quality_penalty'],
+                'objective_values': item['objective_values'],
+                'is_feasible': True,
+                'violation_score': 0.0,
+                'constraint_violations': [],
+                'active_constraints': item.get('active_constraints', []),
+            })
+        return solutions
+
+    def _build_coal_results(
+        self,
+        coals,
+        ratios,
+        prices,
+        heat_values,
+        ash_contents,
+        volatile_matters,
+        fixed_carbons,
+        sulfur_contents,
+    ) -> List[Dict]:
+        coal_results = []
+        for index, coal in enumerate(coals):
+            ratio_percent = ratios[index] * 100.0
+            if ratio_percent < 0.1:
+                continue
+
+            coal_results.append({
+                'name': coal.get('name', f'煤种{index + 1}'),
+                'ratio': ratio_percent,
+                'price_contribution': float(ratios[index] * prices[index]),
+                'heat_contribution': float(ratios[index] * heat_values[index]),
+                'ash_contribution': float(ratios[index] * ash_contents[index]),
+                'volatile_contribution': float(ratios[index] * volatile_matters[index]),
+                'fixed_carbon_contribution': float(ratios[index] * fixed_carbons[index]),
+                'sulfur_contribution': float(ratios[index] * sulfur_contents[index]),
+            })
+
+        coal_results.sort(key=lambda item: item['ratio'], reverse=True)
+        return coal_results
+
+    def _choose_recommended_solution(self, pareto_solutions: List[Dict]) -> Dict:
+        if len(pareto_solutions) == 1:
+            return pareto_solutions[0]
+
+        cost_values = [solution['objective_values']['cost'] for solution in pareto_solutions]
+        heat_values = [solution['objective_values']['heat'] for solution in pareto_solutions]
+        quality_values = [solution['objective_values']['quality_penalty'] for solution in pareto_solutions]
+        cost_min, cost_max = min(cost_values), max(cost_values)
+        heat_min, heat_max = min(heat_values), max(heat_values)
+        quality_min, quality_max = min(quality_values), max(quality_values)
+
+        def normalize_min(value, min_value, max_value):
+            return 0.0 if abs(max_value - min_value) <= 1e-12 else (value - min_value) / (max_value - min_value)
+
+        def normalize_max(value, min_value, max_value):
+            return 0.0 if abs(max_value - min_value) <= 1e-12 else (max_value - value) / (max_value - min_value)
+
+        def ideal_distance(solution):
+            cost_distance = normalize_min(solution['objective_values']['cost'], cost_min, cost_max)
+            heat_distance = normalize_max(solution['objective_values']['heat'], heat_min, heat_max)
+            quality_distance = normalize_min(solution['objective_values']['quality_penalty'], quality_min, quality_max)
+            return (cost_distance ** 2 + heat_distance ** 2 + quality_distance ** 2) ** 0.5
+
+        return min(pareto_solutions, key=lambda solution: (ideal_distance(solution), solution['total_price']))
+
+    def _calculate_quality_penalty(self, evaluation: Dict, params: Dict) -> float:
+        ash_penalty = self._normalize_low_is_better(evaluation['total_ash'], params.get('ash_min'), params.get('ash_limit'))
+        sulfur_penalty = self._normalize_low_is_better(evaluation['total_sulfur'], params.get('sulfur_min'), params.get('sulfur_limit'))
+        volatile_penalty = self._normalize_midpoint_deviation(
+            evaluation['total_volatile'],
+            params.get('volatile_min'),
+            params.get('volatile_max'),
+        )
+        fixed_carbon_penalty = self._normalize_midpoint_deviation(
+            evaluation['total_fixed_carbon'],
+            params.get('fixed_carbon_min'),
+            params.get('fixed_carbon_max'),
+        )
+        return float((ash_penalty + sulfur_penalty + volatile_penalty + fixed_carbon_penalty) / 4.0)
+
+    @staticmethod
+    def _normalize_low_is_better(value, min_value, max_value) -> float:
+        if min_value is None or max_value is None:
+            return 0.0
+        min_value = float(min_value)
+        max_value = float(max_value)
+        span = max(max_value - min_value, 1e-9)
+        return float(max(0.0, min(1.0, (float(value) - min_value) / span)))
+
+    @staticmethod
+    def _normalize_midpoint_deviation(value, min_value, max_value) -> float:
+        if min_value is None or max_value is None:
+            return 0.0
+        min_value = float(min_value)
+        max_value = float(max_value)
+        midpoint = (min_value + max_value) / 2.0
+        half_span = max((max_value - min_value) / 2.0, 1e-9)
+        return float(max(0.0, min(1.0, abs(float(value) - midpoint) / half_span)))
+
+    @staticmethod
+    def _safe_float(value) -> float:
+        value = float(value)
+        if np.isfinite(value):
+            return value
+        return 1e9
 
     def _build_ratio_limits(self, params: Dict, n_coals: int) -> Dict:
         if 'ratio_constraints' in params:

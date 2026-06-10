@@ -1044,7 +1044,7 @@ async function startOptimization() {
         optimizationInProgress = true;
         updateActionButtonsState();
         showLoadingState('正在进行优化计算，请稍候...');
-        syncWorkspaceStatus('info', '正在执行智能混煤优化计算。', '系统正在搜索满足约束的最低成本方案');
+        syncWorkspaceStatus('info', '正在执行多目标混煤优化计算。', '系统正在搜索满足约束的 Pareto 候选方案');
 
         const response = await fetch('/api/optimization', {
             method: 'POST',
@@ -1118,17 +1118,18 @@ function hideConstraintSettingsModal() {
 function updateConstraintModalSummary() {
     const objectiveElement = document.getElementById('constraintModalObjectiveSummary');
     if (objectiveElement) {
-        objectiveElement.textContent = document.getElementById('optimizationTarget')?.value || '喷煤性价比最优';
+        objectiveElement.textContent = '多目标Pareto最优';
     }
 }
 
 function displayOptimizationResults(status, data, message) {
-    latestDisplayedResult = data || null;
-    lastOptimizationResult = data?.is_feasible ? data : null;
+    const displayData = normalizeDisplayResult(data, data?.recommended_solution || null);
+    latestDisplayedResult = displayData || null;
+    lastOptimizationResult = displayData?.is_feasible ? displayData : null;
 
     const ratios = [];
-    const coalNames = Array.isArray(data?.coal_names) ? data.coal_names : [];
-    const optimalRatios = Array.isArray(data?.optimal_ratios) ? data.optimal_ratios : [];
+    const coalNames = Array.isArray(displayData?.coal_names) ? displayData.coal_names : [];
+    const optimalRatios = Array.isArray(displayData?.optimal_ratios) ? displayData.optimal_ratios : [];
 
     for (let i = 0; i < coalNames.length; i += 1) {
         ratios.push({
@@ -1138,11 +1139,127 @@ function displayOptimizationResults(status, data, message) {
     }
 
     updateRatioTable(ratios, status);
-    updatePerformanceIndicators(data);
-    updateAlgorithmInfo(data);
-    renderConstraintStatus(data);
-    updateCharts(data);
-    updateQuickResultSummary(status, data, message);
+    updatePerformanceIndicators(displayData);
+    updateAlgorithmInfo(displayData);
+    renderConstraintStatus(displayData);
+    renderParetoSolutions(data, displayData?.selected_solution_id);
+    updateCharts(displayData);
+    updateQuickResultSummary(status, displayData, message);
+    updateActionButtonsState();
+}
+
+function normalizeDisplayResult(baseData, selectedSolution = null) {
+    if (!baseData) {
+        return null;
+    }
+    if (!selectedSolution) {
+        return { ...baseData };
+    }
+
+    const coalNames = Array.isArray(baseData.coal_names)
+        ? baseData.coal_names
+        : (Array.isArray(selectedSolution.coal_names) ? selectedSolution.coal_names : []);
+    const optimalRatios = Array.isArray(selectedSolution.optimal_ratios)
+        ? selectedSolution.optimal_ratios
+        : (Array.isArray(baseData.optimal_ratios) ? baseData.optimal_ratios : []);
+    const blendingRatio = selectedSolution.blending_ratio || coalNames.reduce((result, coalName, index) => {
+        result[coalName] = optimalRatios[index] || 0;
+        return result;
+    }, {});
+
+    return {
+        ...baseData,
+        ...selectedSolution,
+        coal_names: coalNames,
+        optimal_ratios: optimalRatios,
+        blending_ratio: blendingRatio,
+        is_feasible: selectedSolution.is_feasible ?? baseData.is_feasible,
+        constraints_satisfied: selectedSolution.is_feasible ?? baseData.constraints_satisfied,
+        selected_solution_id: selectedSolution.solution_id,
+        recommended_solution: baseData.recommended_solution,
+        pareto_solutions: baseData.pareto_solutions,
+        iterations: baseData.iterations,
+        time_taken: baseData.time_taken,
+        fitness_value: selectedSolution.quality_penalty ?? baseData.fitness_value,
+        active_constraints: selectedSolution.active_constraints || baseData.active_constraints || [],
+        constraint_violations: selectedSolution.constraint_violations || baseData.constraint_violations || [],
+        diagnosis: baseData.diagnosis || []
+    };
+}
+
+function renderParetoSolutions(data, selectedSolutionId = null) {
+    const tbody = document.querySelector('.pareto-solutions-table tbody');
+    if (!tbody) {
+        return;
+    }
+
+    const solutions = Array.isArray(data?.pareto_solutions) ? data.pareto_solutions : [];
+    if (solutions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">当前没有可展示的 Pareto 候选方案</td></tr>';
+        return;
+    }
+
+    const activeId = selectedSolutionId || data?.recommended_solution?.solution_id || solutions[0].solution_id;
+    tbody.innerHTML = solutions.map(solution => {
+        const isActive = solution.solution_id === activeId;
+        const badge = solution.solution_id === data?.recommended_solution?.solution_id
+            ? '<span class="badge bg-success ms-1">推荐</span>'
+            : '';
+        return `
+            <tr class="${isActive ? 'table-primary' : ''}" data-solution-id="${solution.solution_id}">
+                <td><strong>${solution.solution_id}</strong>${badge}</td>
+                <td>${formatNumeric(solution.total_price, value => `¥${value.toFixed(2)}`)}</td>
+                <td>${formatNumeric(solution.total_heat, value => value.toFixed(0))}</td>
+                <td>${formatNumeric(solution.total_ash, value => `${value.toFixed(2)}%`)}</td>
+                <td>${formatNumeric(solution.total_sulfur, value => `${value.toFixed(2)}%`)}</td>
+                <td>${formatNumeric(solution.quality_penalty, value => value.toFixed(4))}</td>
+                <td>
+                    <button type="button" class="btn btn-sm btn-outline-primary pareto-select-btn" data-solution-id="${solution.solution_id}">
+                        查看
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.querySelectorAll?.('.pareto-select-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            selectParetoSolution(this.dataset.solutionId);
+        });
+    });
+}
+
+function selectParetoSolution(solutionId) {
+    if (!latestDisplayedResult || !Array.isArray(latestDisplayedResult.pareto_solutions)) {
+        return;
+    }
+
+    const solution = latestDisplayedResult.pareto_solutions.find(item => item.solution_id === solutionId);
+    if (!solution) {
+        return;
+    }
+
+    const nextData = normalizeDisplayResult(latestDisplayedResult, solution);
+    latestDisplayedResult = nextData;
+    lastOptimizationResult = nextData?.is_feasible ? nextData : null;
+
+    const ratios = [];
+    const coalNames = Array.isArray(nextData.coal_names) ? nextData.coal_names : [];
+    const optimalRatios = Array.isArray(nextData.optimal_ratios) ? nextData.optimal_ratios : [];
+    for (let i = 0; i < coalNames.length; i += 1) {
+        ratios.push({
+            coal_name: coalNames[i],
+            percentage: (optimalRatios[i] || 0) * 100
+        });
+    }
+
+    updateRatioTable(ratios, 'success');
+    updatePerformanceIndicators(nextData);
+    updateAlgorithmInfo(nextData);
+    renderConstraintStatus(nextData);
+    renderParetoSolutions(nextData, solutionId);
+    updateCharts(nextData);
+    updateQuickResultSummary('success', nextData, '');
     updateActionButtonsState();
 }
 
@@ -1199,8 +1316,8 @@ function updatePerformanceIndicators(data) {
         '.total-fixed-carbon': formatNumeric(data?.total_fixed_carbon, value => `${value.toFixed(2)}%`),
         '.total-volatile': formatNumeric(data?.total_volatile, value => `${value.toFixed(2)}%`),
         '.total-sulfur': formatNumeric(data?.total_sulfur, value => `${value.toFixed(2)}%`),
-        '.objective-type': data?.objective_type === 'pci_cost_effective_v1'
-            ? '喷煤性价比最优（可行域最低成本）'
+        '.objective-type': data?.objective_type === 'pci_pareto_nsga2_v1'
+            ? '多目标Pareto最优'
             : (data?.optimization_target || '--'),
         '.feasibility-status': data?.is_feasible ? '可行，且满足全部硬约束' : '不可行或未找到可行解'
     };
@@ -1714,7 +1831,7 @@ function updateQuickResultSummary(status = null, data = null, message = '') {
 
     if (!data) {
         if (status === 'error' && message) {
-            objectiveElement.textContent = '喷煤性价比最优';
+            objectiveElement.textContent = '多目标Pareto最优';
             priceElement.textContent = '--';
             heatElement.textContent = '--';
             applySummaryState({
@@ -1734,23 +1851,24 @@ function updateQuickResultSummary(status = null, data = null, message = '') {
             syncWorkspaceStatus('danger', '优化计算失败。', message);
             return;
         }
-        objectiveElement.textContent = '喷煤性价比最优';
+        objectiveElement.textContent = '多目标Pareto最优';
         priceElement.textContent = '--';
         heatElement.textContent = '--';
         applySummaryState();
         return;
     }
 
-    objectiveElement.textContent = data.objective_type === 'pci_cost_effective_v1'
-        ? '喷煤性价比最优'
-        : (data.optimization_target || '喷煤性价比最优');
+    objectiveElement.textContent = data.objective_type === 'pci_pareto_nsga2_v1'
+        ? '多目标Pareto最优'
+        : (data.optimization_target || '多目标Pareto最优');
     priceElement.textContent = formatNumeric(data.total_price, value => `¥${value.toFixed(2)}/吨`);
     heatElement.textContent = formatNumeric(data.total_heat, value => `${value.toFixed(0)} kcal/kg`);
 
     if (status === 'success' && data.is_feasible) {
+        const paretoCount = Array.isArray(data.pareto_solutions) ? data.pareto_solutions.length : 0;
         const diagnosisText = data.active_constraints?.length
             ? `活跃约束：${data.active_constraints.slice(0, 3).join('、')}`
-            : '当前方案满足全部硬约束，并且存在一定操作余量。';
+            : `当前方案满足全部硬约束，Pareto 前沿包含 ${paretoCount || 1} 个候选方案。`;
         const metaParts = [];
         const heroHintParts = [];
         if (Number.isFinite(data.iterations)) {
@@ -1768,16 +1886,16 @@ function updateQuickResultSummary(status = null, data = null, message = '') {
         applySummaryState({
             badgeTone: 'success',
             badgeText: '可行推荐',
-            statusText: '已找到满足约束的推荐方案',
+            statusText: '已找到Pareto推荐方案',
             statusClass: 'quick-result-status is-success',
             diagnosisText,
             metaText: metaParts.length > 0 ? `计算完成 | ${metaParts.join(' | ')}` : '计算完成',
             feasibilityText: '满足全部硬约束',
-            heroHeadlineText: '已生成可行推荐方案',
+            heroHeadlineText: '已生成Pareto推荐方案',
             heroHintText: heroHintParts.join('，') || '右侧决策面板已生成关键指标与约束摘要',
             overviewStatusClass: 'is-success',
             overviewConstraintText: '全部约束满足',
-            overviewAlgorithmText: metaParts.length > 0 ? `计算摘要：${metaParts.join('，')}` : '已生成推荐方案'
+            overviewAlgorithmText: metaParts.length > 0 ? `NSGA-II：${metaParts.join('，')}` : 'NSGA-II已生成Pareto候选方案'
         });
         syncWorkspaceStatus('success', '已生成推荐方案，可以查看详细结果。', '右侧已给出结论，底部详情区可继续查看配比和约束明细');
         return;
@@ -2144,8 +2262,8 @@ function buildShareableResultText(data) {
 
     const lines = [
         '【喷煤混配优化结果】',
-        `目标：${data.objective_type === 'pci_cost_effective_v1' ? '喷煤性价比最优（可行域最低成本）' : (data.optimization_target || '喷煤性价比最优')}`,
-        `结论：${data.is_feasible ? '已找到满足全部硬约束的推荐方案' : '当前结果不可直接用于生产'}`,
+        `目标：${data.objective_type === 'pci_pareto_nsga2_v1' ? '多目标Pareto最优（NSGA-II）' : (data.optimization_target || '多目标Pareto最优')}`,
+        `结论：${data.is_feasible ? '已找到满足全部硬约束的Pareto推荐方案' : '当前结果不可直接用于生产'}`,
         '',
         '一、推荐配比'
     ];
