@@ -577,9 +577,6 @@ class OptimizedSmartBlendingAlgorithm:
 
         final_ratios = seed_ratios
         final_evaluation = seed_evaluation
-        if ga_evaluation['is_feasible'] and ga_evaluation['fitness'] <= seed_evaluation['fitness'] + 1e-9:
-            final_ratios = optimal_ratios
-            final_evaluation = ga_evaluation
 
         if not final_evaluation['is_feasible']:
             return {
