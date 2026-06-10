@@ -1,6 +1,7 @@
 import math
 
 from backend.service.blending_service import OptimizedSmartBlendingAlgorithm
+from backend.routes.optimization import _build_api_result
 
 
 def build_params():
@@ -56,26 +57,76 @@ def build_coals():
     ]
 
 
-def test_pci_optimization_prefers_lowest_cost_feasible_solution():
+def assert_solution_is_feasible(solution):
+    assert solution['is_feasible'] is True
+    assert solution['constraint_violations'] == []
+    assert math.isclose(sum(solution['optimal_ratios']), 1.0, rel_tol=0, abs_tol=1e-6)
+
+
+def dominates(left, right):
+    left_objectives = left['objective_values']
+    right_objectives = right['objective_values']
+    left_values = [
+        left_objectives['cost'],
+        -left_objectives['heat'],
+        left_objectives['quality_penalty'],
+    ]
+    right_values = [
+        right_objectives['cost'],
+        -right_objectives['heat'],
+        right_objectives['quality_penalty'],
+    ]
+
+    return all(left <= right + 1e-9 for left, right in zip(left_values, right_values)) and any(
+        left < right - 1e-9 for left, right in zip(left_values, right_values)
+    )
+
+
+def test_pci_optimization_returns_pareto_front_and_recommendation():
     algorithm = OptimizedSmartBlendingAlgorithm()
+    algorithm.set_optimizer_config({
+        'population_size': 80,
+        'max_generations': 80,
+        'parallel_computing': False,
+        'random_seed': 42,
+    })
     coals = build_coals()
     params = build_params()
 
     result = algorithm.calculate(coals, params, optimization_target='喷煤性价比最优')
 
     assert result['status'] == 'success'
-    assert result['summary']['is_feasible'] is True
-    assert result['summary']['optimization_target'] == '喷煤性价比最优'
-    assert math.isclose(sum(item['ratio'] for item in result['coal_results']) / 100.0, 1.0, rel_tol=0, abs_tol=1e-6)
-    assert math.isclose(result['summary']['total_price'], 475.0, rel_tol=0, abs_tol=1e-3)
+    assert result['summary']['objective_type'] == 'pci_pareto_nsga2_v1'
+    assert result['summary']['optimization_target'] == '多目标Pareto最优'
 
-    ratio_map = {item['name']: item['ratio'] for item in result['coal_results']}
-    assert math.isclose(ratio_map['经济煤'], 50.0, rel_tol=0, abs_tol=1e-3)
-    assert math.isclose(ratio_map['高硫低价煤'], 50.0, rel_tol=0, abs_tol=1e-3)
+    pareto_solutions = result['summary']['pareto_solutions']
+    recommended_solution = result['summary']['recommended_solution']
+    assert len(pareto_solutions) >= 2
+    assert recommended_solution['solution_id'] in {solution['solution_id'] for solution in pareto_solutions}
+
+    for solution in pareto_solutions:
+        assert_solution_is_feasible(solution)
+        assert set(solution['objective_values']) == {'cost', 'heat', 'quality_penalty'}
+
+    for left in pareto_solutions:
+        for right in pareto_solutions:
+            if left is not right:
+                assert not dominates(left, right)
+
+    assert result['summary']['is_feasible'] is True
+    assert math.isclose(sum(item['ratio'] for item in result['coal_results']) / 100.0, 1.0, rel_tol=0, abs_tol=1e-6)
+    assert math.isclose(result['summary']['total_price'], recommended_solution['total_price'], rel_tol=0, abs_tol=1e-6)
+    assert math.isclose(result['summary']['total_heat'], recommended_solution['total_heat'], rel_tol=0, abs_tol=1e-6)
 
 
 def test_legacy_targets_map_to_same_pci_objective():
     algorithm = OptimizedSmartBlendingAlgorithm()
+    algorithm.set_optimizer_config({
+        'population_size': 40,
+        'max_generations': 40,
+        'parallel_computing': False,
+        'random_seed': 7,
+    })
     coals = build_coals()
     params = build_params()
 
@@ -84,9 +135,35 @@ def test_legacy_targets_map_to_same_pci_objective():
 
     assert low_cost['status'] == 'success'
     assert cost_effective['status'] == 'success'
-    assert low_cost['summary']['optimization_target'] == '喷煤性价比最优'
-    assert cost_effective['summary']['optimization_target'] == '喷煤性价比最优'
-    assert math.isclose(low_cost['summary']['total_price'], cost_effective['summary']['total_price'], rel_tol=0, abs_tol=1e-6)
+    assert low_cost['summary']['optimization_target'] == '多目标Pareto最优'
+    assert cost_effective['summary']['optimization_target'] == '多目标Pareto最优'
+    assert low_cost['summary']['recommended_solution']['solution_id']
+    assert cost_effective['summary']['recommended_solution']['solution_id']
+
+
+def test_api_result_keeps_legacy_fields_and_exposes_pareto_payload():
+    algorithm = OptimizedSmartBlendingAlgorithm()
+    algorithm.set_optimizer_config({
+        'population_size': 50,
+        'max_generations': 50,
+        'parallel_computing': False,
+        'random_seed': 11,
+    })
+    coals = build_coals()
+    params = build_params()
+
+    algorithm_result = algorithm.calculate(coals, params)
+    payload = _build_api_result([coal['name'] for coal in coals], algorithm_result, 0.25)
+    data = payload['result']
+
+    assert payload['status'] == 'success'
+    assert data['objective_type'] == 'pci_pareto_nsga2_v1'
+    assert data['recommended_solution']['solution_id']
+    assert len(data['pareto_solutions']) >= 2
+    assert data['optimal_ratios'] == data['recommended_solution']['optimal_ratios']
+    assert data['blending_ratio'] == dict(zip(data['coal_names'], data['optimal_ratios']))
+    assert math.isclose(data['total_price'], data['recommended_solution']['total_price'], rel_tol=0, abs_tol=1e-6)
+    assert data['fitness_value'] == data['recommended_solution']['quality_penalty']
 
 
 def test_returns_no_feasible_solution_when_constraints_conflict():
@@ -144,6 +221,6 @@ def test_best_performance_target_is_rejected():
     try:
         algorithm.calculate(build_coals(), build_params(), optimization_target='最佳性能')
     except ValueError as exc:
-        assert '喷煤性价比最优' in str(exc)
+        assert '多目标Pareto最优' in str(exc)
     else:
         raise AssertionError('最佳性能 should be rejected')

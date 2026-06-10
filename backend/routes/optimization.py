@@ -82,7 +82,12 @@ def _build_api_result(coal_names, algorithm_result, time_taken):
     coal_results = algorithm_result.get('coal_results', [])
     ratio_map = {item['name']: item['ratio'] / 100.0 for item in coal_results}
 
-    optimal_ratios = [ratio_map.get(coal_name, 0.0) for coal_name in coal_names]
+    recommended_solution = summary.get('recommended_solution')
+    pareto_solutions = summary.get('pareto_solutions', [])
+    if recommended_solution and isinstance(recommended_solution.get('optimal_ratios'), list):
+        optimal_ratios = recommended_solution['optimal_ratios']
+    else:
+        optimal_ratios = [ratio_map.get(coal_name, 0.0) for coal_name in coal_names]
     timestamp = datetime.now().isoformat()
 
     result_payload = {
@@ -107,6 +112,10 @@ def _build_api_result(coal_names, algorithm_result, time_taken):
         'violation_score': summary.get('violation_score'),
         'active_constraints': summary.get('active_constraints', []),
         'diagnosis': summary.get('diagnosis', []),
+        'quality_penalty': summary.get('quality_penalty'),
+        'objective_values': summary.get('objective_values'),
+        'recommended_solution': recommended_solution,
+        'pareto_solutions': pareto_solutions,
         'timestamp': timestamp,
     }
 
