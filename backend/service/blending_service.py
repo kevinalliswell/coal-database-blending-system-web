@@ -445,17 +445,46 @@ class NSGA2BlendingOptimizer:
 
         population_size = int(self.config.get('population_size', 300))
         max_generations = int(self.config.get('max_generations', 2000))
+        patience = int(self.config.get('early_stopping_patience', 150))
+        threshold = float(self.config.get('convergence_threshold', 1e-6))
         population = self._create_initial_population(n_coals, ratio_limits, seed_individual)
+
+        best_cost = float('inf')
+        best_heat = float('-inf')
+        best_quality = float('inf')
+        stagnation_count = 0
 
         evaluated = []
         for generation in range(max_generations):
             self.base_optimizer.generation_count = generation
-            self.base_optimizer.stagnation_count = 0
 
             evaluated = self._evaluate_population(population, objective_func)
             fronts = self.fast_non_dominated_sort(evaluated)
             for front in fronts:
                 self.assign_crowding_distance(front, evaluated)
+
+            feasible = [item for item in evaluated if item['is_feasible']]
+            if feasible:
+                gen_best_cost = min(item['total_price'] for item in feasible)
+                gen_best_heat = max(item['total_heat'] for item in feasible)
+                gen_best_quality = min(item['quality_penalty'] for item in feasible)
+                improved = (
+                    gen_best_cost < best_cost - threshold
+                    or gen_best_heat > best_heat + threshold
+                    or gen_best_quality < best_quality - threshold
+                )
+                best_cost = min(best_cost, gen_best_cost)
+                best_heat = max(best_heat, gen_best_heat)
+                best_quality = min(best_quality, gen_best_quality)
+                stagnation_count = 0 if improved else stagnation_count + 1
+            else:
+                stagnation_count += 1
+
+            self.base_optimizer.stagnation_count = stagnation_count
+            self.generations_used = generation + 1
+
+            if generation + 1 >= patience and stagnation_count >= patience:
+                break
 
             offspring = []
             while len(offspring) < population_size:
@@ -477,7 +506,6 @@ class NSGA2BlendingOptimizer:
 
             combined = evaluated + self._evaluate_population(offspring, objective_func)
             population = self._next_generation(combined, population_size)
-            self.generations_used = generation + 1
 
         if not evaluated:
             evaluated = self._evaluate_population(population, objective_func)
