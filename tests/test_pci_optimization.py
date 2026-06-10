@@ -89,6 +89,17 @@ def test_legacy_targets_map_to_same_pci_objective():
     assert math.isclose(low_cost['summary']['total_price'], cost_effective['summary']['total_price'], rel_tol=0, abs_tol=1e-6)
 
 
+def test_linear_seed_is_preserved_when_ga_only_improves_by_noise():
+    algorithm = OptimizedSmartBlendingAlgorithm()
+    coals = build_coals()
+    params = build_params()
+
+    result = algorithm.calculate(coals, params, optimization_target='喷煤性价比最优')
+
+    assert result['status'] == 'success'
+    assert math.isclose(result['summary']['total_price'], 475.0, rel_tol=0, abs_tol=1e-9)
+
+
 def test_returns_no_feasible_solution_when_constraints_conflict():
     algorithm = OptimizedSmartBlendingAlgorithm()
     coals = [

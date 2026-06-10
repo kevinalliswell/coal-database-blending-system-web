@@ -1671,7 +1671,7 @@ function updateQuickResultSummary(status = null, data = null, message = '') {
           overviewStatusClass = '',
           overviewConstraintText = '待诊断',
           overviewAlgorithmText = '选择至少两种煤并检查约束后开始优化。'
-      }) => {
+      } = {}) => {
         statusElement.textContent = statusText;
         statusElement.className = statusClass;
         diagnosisElement.textContent = diagnosisText;
