@@ -1,7 +1,6 @@
 // 置换比计算页面JavaScript文件
 
 // 全局变量
-let calculationHistory = [];
 let contributionChart = null;
 
 // DOM加载完成后执行
@@ -18,9 +17,6 @@ function initializePage() {
     
     // 初始化图表
     initializeChart();
-    
-    // 加载历史记录
-    loadCalculationHistory();
 }
 
 // 绑定事件
@@ -37,7 +33,7 @@ function bindEvents() {
     document.getElementById('loadExampleBtn').addEventListener('click', loadExampleData);
     document.getElementById('exportResultBtn').addEventListener('click', exportResults);
     document.getElementById('printResultBtn').addEventListener('click', printResults);
-    document.getElementById('clearHistoryBtn').addEventListener('click', clearHistory);
+    document.getElementById('openHistoryBtn')?.addEventListener('click', openHistoryPage);
     
     // 参数输入验证
     const numberInputs = document.querySelectorAll('input[type="number"]');
@@ -106,9 +102,12 @@ async function performCalculation() {
         } else {
             result = await calculateActualRatio();
         }
+
+        if (result.status !== 'success') {
+            throw new Error(result.message || '计算失败');
+        }
         
         displayResults(result, selectedType);
-        addToHistory(result, selectedType);
         document.getElementById('resultsSection').style.display = 'block';
         
         // 滚动到结果区域
@@ -495,6 +494,10 @@ function printResults() {
     printWindow.document.write(printContent);
     printWindow.document.close();
     printWindow.print();
+}
+
+function openHistoryPage() {
+    window.location.href = '/optimization_history/replacement_ratio';
 }
 
 // 生成打印内容

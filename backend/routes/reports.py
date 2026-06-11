@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
-import json
 import pandas as pd
 from flask import Blueprint, request, jsonify, send_file
 from openpyxl import Workbook
@@ -11,7 +9,8 @@ from io import BytesIO
 from datetime import datetime
 import logging
 
-from app.config import Config
+from app.extensions import db
+from app.models import OptimizationHistory
 from app.utils.excel_utils import create_unified_a4_report
 from app.utils.report_utils import generate_blending_report_filename
 
@@ -54,18 +53,17 @@ def _create_and_send_report(data: dict):
         # 以JSON格式返回内部服务器错误
         return jsonify({'status': 'error', 'message': f'报告生成失败: {str(e)}'}), 500
 
-@reports_bp.route('/optimization/export/<history_id>', methods=['GET'])
+@reports_bp.route('/optimization/export/<int:history_id>', methods=['GET'])
 def export_optimization_report(history_id):
     """导出历史Excel报告"""
     try:
-        history_file = os.path.join(Config.HISTORY_DIR, f"optimization_{history_id}.json")
-        
-        if not os.path.exists(history_file):
+        history = db.session.get(OptimizationHistory, history_id)
+
+        if history is None:
             return jsonify({'status': 'error', 'message': '优化记录不存在'}), 404
-        
-        with open(history_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
+
+        data = history.to_detail_dict()['result_payload']
+
         # 调用核心函数处理报告生成和发送
         return _create_and_send_report(data)
 

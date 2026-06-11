@@ -4,12 +4,13 @@
 import json
 import logging
 import math
-import os
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
 from app.config import Config
+from app.extensions import db
+from app.models import OptimizationHistory
 from app.services.blending_service import OptimizedSmartBlendingAlgorithm
 from app.utils.file_utils import safe_read_csv
 from app.utils.validation import validate_optimization_params
@@ -27,6 +28,10 @@ def _sanitize_json_value(value):
     if isinstance(value, float):
         return value if math.isfinite(value) else None
     return value
+
+
+def _dump_json(payload):
+    return json.dumps(_sanitize_json_value(payload), ensure_ascii=False, allow_nan=False)
 
 
 def _build_algorithm_params(constraints, selected_coal_ids):
@@ -126,6 +131,32 @@ def _build_api_result(coal_names, algorithm_result, time_taken):
     })
 
 
+def _save_optimization_history(request_data, response_payload):
+    result = response_payload.get('result', {})
+
+    history = OptimizationHistory(
+        timestamp=result.get('timestamp', datetime.now().isoformat()),
+        coal_names=_dump_json(result.get('coal_names', [])),
+        optimal_ratios=_dump_json(result.get('optimal_ratios', [])),
+        constraints=_dump_json(request_data.get('constraints', {})),
+        total_price=result.get('total_price'),
+        total_heat=result.get('total_heat'),
+        total_ash=result.get('total_ash'),
+        total_volatile=result.get('total_volatile'),
+        total_fixed_carbon=result.get('total_fixed_carbon'),
+        total_sulfur=result.get('total_sulfur'),
+        performance_price_ratio=result.get('performance_price_ratio'),
+        iterations=result.get('iterations'),
+        time_taken=result.get('time_taken'),
+        fitness_value=result.get('fitness_value'),
+        constraints_satisfied=result.get('constraints_satisfied'),
+        request_payload=_dump_json(request_data),
+        result_payload=_dump_json(response_payload),
+    )
+    db.session.add(history)
+    db.session.commit()
+
+
 @optimization_bp.route('/optimization', methods=['POST'])
 def run_optimization():
     """执行喷煤工艺混煤优化。"""
@@ -185,12 +216,7 @@ def run_optimization():
         payload = _build_api_result(coal_names, algorithm_result, time_taken)
 
         if payload['status'] == 'success':
-            history_file = os.path.join(
-                Config.HISTORY_DIR,
-                f"optimization_{datetime.now().strftime('%Y%m%d%H%M%S')}.json",
-            )
-            with open(history_file, 'w', encoding='utf-8') as file:
-                json.dump(payload, file, ensure_ascii=False, indent=2, allow_nan=False)
+            _save_optimization_history(data, payload)
 
         return jsonify(_sanitize_json_value(payload))
 
@@ -206,55 +232,25 @@ def run_optimization():
 def get_optimization_history():
     """获取优化历史记录。"""
     try:
-        history_files = [name for name in os.listdir(Config.HISTORY_DIR) if name.endswith('.json')]
-        history_files.sort(reverse=True)
-
-        history_list = []
-        for filename in history_files:
-            file_path = os.path.join(Config.HISTORY_DIR, filename)
-            try:
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    history_data = json.load(file)
-
-                result = history_data.get('result', {})
-                timestamp = filename.replace('optimization_', '').replace('.json', '')
-                date_obj = datetime.strptime(timestamp, '%Y%m%d%H%M%S')
-                formatted_date = date_obj.strftime('%Y-%m-%d %H:%M:%S')
-
-                history_list.append(_sanitize_json_value({
-                    'id': timestamp,
-                    'date': formatted_date,
-                    'coal_names': result.get('coal_names', []),
-                    'optimal_ratios': result.get('optimal_ratios', []),
-                    'total_price': result.get('total_price'),
-                    'total_heat': result.get('total_heat'),
-                    'objective_type': result.get('objective_type'),
-                    'is_feasible': result.get(
-                        'is_feasible',
-                        result.get('constraints_satisfied', False),
-                    ),
-                }))
-            except Exception as exc:
-                logger.error('读取历史记录文件 %s 失败: %s', filename, exc)
-
+        history_list = [
+            item.to_summary_dict()
+            for item in OptimizationHistory.query.order_by(OptimizationHistory.created_at.desc()).all()
+        ]
         return jsonify(_sanitize_json_value({'status': 'success', 'data': history_list}))
     except Exception as exc:
         logger.error('获取优化历史记录失败: %s', exc)
         return jsonify({'status': 'error', 'message': f'获取优化历史记录失败: {exc}'}), 500
 
 
-@optimization_bp.route('/optimization/history/<history_id>', methods=['GET'])
+@optimization_bp.route('/optimization/history/<int:history_id>', methods=['GET'])
 def get_optimization_history_detail(history_id):
     """获取特定优化历史记录详情。"""
     try:
-        history_file = os.path.join(Config.HISTORY_DIR, f'optimization_{history_id}.json')
-        if not os.path.exists(history_file):
+        history = db.session.get(OptimizationHistory, history_id)
+        if history is None:
             return jsonify({'status': 'error', 'message': '历史记录不存在'}), 404
 
-        with open(history_file, 'r', encoding='utf-8') as file:
-            history_data = json.load(file)
-
-        return jsonify(_sanitize_json_value({'status': 'success', 'data': history_data}))
+        return jsonify(_sanitize_json_value({'status': 'success', 'data': history.to_detail_dict()}))
     except Exception as exc:
         logger.error('获取优化历史记录详情失败: %s', exc)
         return jsonify({'status': 'error', 'message': f'获取优化历史记录详情失败: {exc}'}), 500
