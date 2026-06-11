@@ -39,27 +39,40 @@ def _dump_json(payload):
     return json.dumps(_sanitize_json_value(payload), ensure_ascii=False, allow_nan=False)
 
 
+def _safe_float(value, default=0.0):
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _format_percent_from_fraction(value):
-    return f'{float(value) * 100:.2f}%'
+    return f'{_safe_float(value) * 100:.2f}%'
 
 
 def _build_theory_parameter_summary(data):
-    coal_params = data.get('coal_params', {})
-    coke_params = data.get('coke_params', {})
-    blast_furnace_params = data.get('blast_furnace_params', {})
+    coal_params = data.get('coal_params') or {}
+    coke_params = data.get('coke_params') or {}
+    blast_furnace_params = data.get('blast_furnace_params') or {}
 
     return (
-        f"煤粉含碳 {_format_percent_from_fraction(coal_params.get('carbon_content', 0))}，"
-        f"焦炭含碳 {_format_percent_from_fraction(coke_params.get('carbon_content', 0))}，"
-        f"煤气利用率 {float(blast_furnace_params.get('eta_co', 0)):.4f}"
+        f"煤粉含碳 {_format_percent_from_fraction(coal_params.get('carbon_content'))}，"
+        f"焦炭含碳 {_format_percent_from_fraction(coke_params.get('carbon_content'))}，"
+        f"煤气利用率 {_safe_float(blast_furnace_params.get('eta_co')):.4f}"
     )
 
 
 def _build_actual_parameter_summary(data, calculation_mode):
-    production_data = data.get('production_data', {})
+    production_data = data.get('production_data') or {}
+    initial_coke = _safe_float(production_data.get('initial_coke_ratio'))
+    final_coke = _safe_float(production_data.get('final_coke_ratio'))
+    initial_coal = _safe_float(production_data.get('initial_coal_ratio'))
+    final_coal = _safe_float(production_data.get('final_coal_ratio'))
     return (
-        f"焦比 {float(production_data.get('initial_coke_ratio', 0)):.1f}->{float(production_data.get('final_coke_ratio', 0)):.1f} kg/t，"
-        f"煤比 {float(production_data.get('initial_coal_ratio', 0)):.1f}->{float(production_data.get('final_coal_ratio', 0)):.1f} kg/t，"
+        f"焦比 {initial_coke:.1f}->{final_coke:.1f} kg/t，"
+        f"煤比 {initial_coal:.1f}->{final_coal:.1f} kg/t，"
         f"模式 {'高级实际' if calculation_mode == 'advanced' else '基础实际'}"
     )
 

@@ -32,7 +32,8 @@ class ReplacementRatioHistory(db.Model):
             return fallback
 
         try:
-            return json.loads(raw_value)
+            parsed = json.loads(raw_value)
+            return fallback if parsed is None else parsed
         except (TypeError, ValueError):
             return fallback
 

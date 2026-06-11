@@ -132,7 +132,7 @@ def _build_api_result(coal_names, algorithm_result, time_taken):
 
 
 def _save_optimization_history(request_data, response_payload):
-    result = response_payload.get('result', {})
+    result = response_payload.get('result') or {}
 
     history = OptimizationHistory(
         timestamp=result.get('timestamp', datetime.now().isoformat()),

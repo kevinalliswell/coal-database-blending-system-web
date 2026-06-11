@@ -62,7 +62,10 @@ def export_optimization_report(history_id):
         if history is None:
             return jsonify({'status': 'error', 'message': '优化记录不存在'}), 404
 
-        data = history.to_detail_dict()['result_payload']
+        detail = history.to_detail_dict()
+        data = detail.get('result_payload') or {}
+        if 'constraints' not in data:
+            data['constraints'] = detail.get('constraints', {})
 
         # 调用核心函数处理报告生成和发送
         return _create_and_send_report(data)
