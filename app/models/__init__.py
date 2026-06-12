@@ -5,6 +5,7 @@
 
 from app.models.coal import Coal
 from app.models.optimization import OptimizationHistory
+from app.models.replacement_ratio_history import ReplacementRatioHistory
 from app.models.upload_file import UploadFile
 
-__all__ = ["Coal", "OptimizationHistory", "UploadFile"]
+__all__ = ["Coal", "OptimizationHistory", "ReplacementRatioHistory", "UploadFile"]

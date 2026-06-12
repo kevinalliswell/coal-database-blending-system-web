@@ -39,7 +39,6 @@ class Config:
     BASE_DIR = str(BASE_DIR_PATH)
     DATA_DIR = str(DATA_PATH)
     UPLOAD_FOLDER = str(DATA_PATH / "uploads")
-    HISTORY_DIR = str(DATA_PATH / "history")
     COAL_DATA_PATH = str(DATA_PATH / "test_coal_datas.csv")
     DATABASE_PATH = str(DEFAULT_DB_PATH)
     STATIC_IMAGES_DIR = str(BASE_DIR_PATH / "static" / "images")
@@ -56,7 +55,7 @@ class Config:
     @classmethod
     def init_app(cls, app) -> None:
         """初始化应用级目录和日志。"""
-        for path in (cls.DATA_DIR, cls.UPLOAD_FOLDER, cls.HISTORY_DIR, cls.STATIC_IMAGES_DIR):
+        for path in (cls.DATA_DIR, cls.UPLOAD_FOLDER, cls.STATIC_IMAGES_DIR):
             os.makedirs(path, exist_ok=True)
 
         logging.basicConfig(level=cls.LOG_LEVEL)

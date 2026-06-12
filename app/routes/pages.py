@@ -33,6 +33,18 @@ def replacement_ratio():
     return render_template("replacement_ratio.html")
 
 
+@page_bp.get("/optimization_history/blending")
+def blending_optimization_history():
+    """混煤优化历史页面。"""
+    return render_template("optimization_history_blending.html")
+
+
+@page_bp.get("/optimization_history/replacement_ratio")
+def replacement_ratio_optimization_history():
+    """置换比历史页面。"""
+    return render_template("optimization_history_replacement_ratio.html")
+
+
 @page_bp.get("/images/<path:filename>")
 def serve_image(filename: str):
     """兼容历史 `/images/*` 路径，实际从静态图片目录读取文件。"""

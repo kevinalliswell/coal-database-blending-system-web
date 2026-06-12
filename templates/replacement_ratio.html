@@ -33,8 +33,14 @@
                     <li class="nav-item">
                         <a class="nav-link active" href="/replacement_ratio"><i class="bi bi-calculator me-1"></i>置换比计算</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#"><i class="bi bi-graph-up me-1"></i>优化历史</a>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-clock-history me-1"></i>优化历史
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/optimization_history/blending">混煤优化历史</a></li>
+                            <li><a class="dropdown-item" href="/optimization_history/replacement_ratio">置换比历史</a></li>
+                        </ul>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#"><i class="bi bi-gear me-1"></i>系统设置</a>
@@ -396,35 +402,22 @@
             </div>
         </div>
 
-        <!-- 计算历史记录 -->
+        <!-- 历史入口 -->
         <div class="row mb-4">
             <div class="col-md-12">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <span><i class="bi bi-clock-history me-2"></i>计算历史</span>
-                        <button class="btn btn-sm btn-outline-danger" id="clearHistoryBtn">
-                            <i class="bi bi-trash me-1"></i>清空历史
+                        <span><i class="bi bi-clock-history me-2"></i>历史记录</span>
+                        <button class="btn btn-sm btn-outline-primary" id="openHistoryBtn">
+                            <i class="bi bi-box-arrow-up-right me-1"></i>查看置换比历史
                         </button>
                     </div>
                     <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-hover" id="historyTable">
-                                <thead>
-                                    <tr>
-                                        <th>时间</th>
-                                        <th>计算类型</th>
-                                        <th>置换比结果</th>
-                                        <th>主要参数</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td colspan="5" class="text-center text-muted">暂无计算历史</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                        <p class="mb-2">本页只负责置换比计算与结果分析，历史记录已统一迁移到独立页面集中查阅。</p>
+                        <p class="text-muted mb-3">你可以在历史页面按时间查看理论置换比、基础实际置换比和高级实际置换比的数据库记录，并展开详情对比输入参数与结果快照。</p>
+                        <a href="/optimization_history/replacement_ratio" class="btn btn-outline-primary">
+                            <i class="bi bi-clock-history me-2"></i>前往置换比历史页面
+                        </a>
                     </div>
                 </div>
             </div>
