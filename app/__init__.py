@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from flask import Flask
 
+from app.__version__ import __version__  # noqa: F401
 from app.config import BASE_DIR, get_config
 from app.extensions import cors, db, migrate
 
