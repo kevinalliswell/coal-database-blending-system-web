@@ -6,8 +6,8 @@
 
 - 保留原有业务代码和前端页面，不用示例代码替换真实逻辑
 - 新增标准 `app/` 包，采用 Flask 应用工厂模式
-- 默认沿用当前稳定的 CSV 数据链路，降低改造风险
-- 同步接入 Flask-SQLAlchemy 和 Flask-Migrate，为后续数据库化改造预留标准能力
+- 默认使用 SQLite/SQLAlchemy 管理煤种数据，CSV 仅作为初始种子和导入文件格式
+- 同步接入 Flask-SQLAlchemy 和 Flask-Migrate，支持本地自动建表和后续迁移管理
 - 提供 `run.py` 和 `wsgi.py`，兼容本地开发与 Gunicorn 部署
 
 ## 技术栈
@@ -64,7 +64,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-默认使用 `csv` 数据模式，读取 `data/test_coal_datas.csv`。如果要切换到数据库模式，请将 `.env` 中的 `DATA_STORAGE_MODE` 改为 `database`，并按需配置 `DATABASE_URL`。
+默认使用 `sqlite` 数据模式，数据库文件位于 `data/coal_system.db`。首次访问接口时会自动建表，并在煤种表为空时从 `data/test_coal_datas.csv` 初始化种子数据。也可以通过 `DATABASE_URL` 指向其他 SQLAlchemy 数据库连接。
 
 ### 4. 启动项目
 
@@ -108,8 +108,8 @@ flask --app run.py db upgrade
 
 说明：
 
-- 默认运行模式仍是 CSV，以保证历史业务逻辑可直接使用
-- ORM 模型对应历史数据库结构，后续可逐步将 CSV 读写迁移到数据库服务层
+- 默认运行模式为 SQLite，煤种管理和智能混煤接口均通过 ORM 读取同一份数据
+- CSV 文件不再作为运行时存储，只保留为初始化种子和批量导入来源
 
 ## 主要接口
 

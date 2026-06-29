@@ -9,11 +9,10 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.config import Config
 from app.extensions import db
 from app.models import OptimizationHistory
 from app.services.blending_service import OptimizedSmartBlendingAlgorithm
-from app.utils.file_utils import safe_read_csv
+from app.services.coal_data_service import coal_to_algorithm_dict, get_coals_by_ids
 from app.utils.validation import validate_optimization_params
 
 logger = logging.getLogger(__name__)
@@ -181,23 +180,17 @@ def run_optimization():
         logger.info('  约束条件: %s', constraints)
         logger.info('  遗传算法参数: %s', ga_params)
 
-        df = safe_read_csv(Config.COAL_DATA_PATH)
-        selected_coals = df[df['序号'].isin(selected_coal_ids)]
+        selected_coals = get_coals_by_ids(selected_coal_ids)
         if len(selected_coals) < 2:
             return jsonify({'status': 'error', 'message': '请至少选择两种煤进行混配'}), 400
 
-        coal_names = selected_coals['煤种名称'].tolist()
-        coals = []
-        for _, row in selected_coals.iterrows():
-            coals.append({
-                'name': row['煤种名称'],
-                'price': float(row['价格(元/吨)']),
-                'calorific_value': float(row['热值(kcal/kg)']),
-                'ash_content': float(row['灰分(%)']),
-                'volatile_matter': float(row['挥发分(%)']),
-                'fixed_carbon': float(row['固定碳(%)']),
-                'total_sulfur': float(row['全硫(%)']),
-            })
+        selected_ids_found = {coal.id for coal in selected_coals}
+        missing_ids = [coal_id for coal_id in selected_coal_ids if int(coal_id) not in selected_ids_found]
+        if missing_ids:
+            return jsonify({'status': 'error', 'message': f'煤种不存在: {missing_ids}'}), 404
+
+        coal_names = [coal.name for coal in selected_coals]
+        coals = [coal_to_algorithm_dict(coal) for coal in selected_coals]
 
         params = _build_algorithm_params(constraints, selected_coal_ids)
         ga_config = _build_ga_config(ga_params)

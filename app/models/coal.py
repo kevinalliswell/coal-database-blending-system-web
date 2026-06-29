@@ -54,6 +54,8 @@ class Coal(db.Model):
             "total_sulfur": self.total_sulfur,
             "total_moisture": self.total_moisture,
             "air_dry_moisture": self.air_dry_moisture,
+            "moisture": self.total_moisture,
+            "mad": self.air_dry_moisture,
             "supplier": self.supplier,
             "hgi": self.hgi,
             "burnout_rate": self.burnout_rate,

@@ -34,7 +34,7 @@ class Config:
     HOST = os.getenv("HOST", "0.0.0.0")
     PORT = int(os.getenv("PORT", "5000"))
 
-    DATA_STORAGE_MODE = os.getenv("DATA_STORAGE_MODE", "csv").lower()
+    DATA_STORAGE_MODE = os.getenv("DATA_STORAGE_MODE", "sqlite").lower()
 
     BASE_DIR = str(BASE_DIR_PATH)
     DATA_DIR = str(DATA_PATH)
@@ -65,7 +65,7 @@ class Config:
     @classmethod
     def is_database_mode(cls) -> bool:
         """判断当前是否启用数据库模式。"""
-        return cls.DATA_STORAGE_MODE == "database"
+        return cls.DATA_STORAGE_MODE in {"database", "sqlite"}
 
     @classmethod
     def is_csv_mode(cls) -> bool:
