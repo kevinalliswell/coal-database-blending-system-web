@@ -30,9 +30,9 @@
 │   ├── extensions.py        # Flask 扩展实例
 │   ├── models/              # SQLAlchemy 模型
 │   ├── routes/              # 蓝图注册与页面路由
-│   ├── services/            # 历史服务兼容导出
+│   ├── services/            # SQLite 煤种服务与历史服务兼容导出
 │   └── utils/               # 历史工具兼容导出
-├── backend/                 # 历史业务代码（保留）
+├── backend/                 # 业务路由、算法服务和工具实现
 ├── data/                    # 样例数据与运行数据目录
 ├── static/                  # 静态资源
 ├── templates/               # 页面模板
@@ -98,11 +98,16 @@ app = create_app()
 
 ## 数据库迁移
 
-当前仓库已经定义 ORM 模型，可按如下命令初始化迁移目录并生成迁移脚本：
+当前仓库已经包含迁移目录和基线迁移脚本。新环境启动前可执行：
 
 ```bash
-flask --app run.py db init
-flask --app run.py db migrate -m "init schema"
+flask --app run.py db upgrade
+```
+
+当 ORM 模型发生结构性变更时，再生成新的迁移脚本：
+
+```bash
+flask --app run.py db migrate -m "describe schema change"
 flask --app run.py db upgrade
 ```
 
@@ -143,10 +148,10 @@ gunicorn -w 2 -b 0.0.0.0:5000 wsgi:app
 
 - 不要提交 `.env`、虚拟环境、缓存文件和数据库文件
 - `data/uploads/`、`data/history/` 属于运行时产物，已加入 `.gitignore`
-- 当前仓库保留了 `backend/` 历史代码，便于后续逐步替换，而不是一次性重写
+- `backend/` 当前承载业务路由、算法服务和通用工具，`app/` 负责应用工厂、模型、配置和蓝图装配
 
 ## 后续建议
 
-- 为 `app/services/` 增加面向 ORM 的正式服务实现，逐步替换 CSV 读写
-- 建立 `tests/` 目录，为核心计算和 API 增加自动化测试
-- 初始化 `migrations/` 并纳入版本管理，形成数据库演进基线
+- 补充更多浏览器端流程测试，覆盖煤种 CRUD、导入导出、智能混煤、置换比和历史详情弹窗
+- 持续收敛 `backend/` 与 `app/` 的兼容层边界，优先减少重复入口和过期说明
+- 按实际部署环境补充数据库备份、迁移回滚和运行监控说明
