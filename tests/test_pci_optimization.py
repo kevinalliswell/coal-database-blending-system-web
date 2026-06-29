@@ -166,6 +166,63 @@ def test_api_result_keeps_legacy_fields_and_exposes_pareto_payload():
     assert data['fitness_value'] == data['recommended_solution']['quality_penalty']
 
 
+def test_two_coal_blending_uses_fast_path_and_returns_pareto_result():
+    algorithm = OptimizedSmartBlendingAlgorithm()
+    algorithm.set_optimizer_config({
+        'population_size': 50,
+        'max_generations': 50,
+        'parallel_computing': False,
+        'random_seed': 11,
+    })
+    coals = [
+        {
+            'name': '山西潞阳洗末煤 S1.0（分析基）',
+            'price': 998.46,
+            'calorific_value': 7419.0,
+            'ash_content': 11.5877775,
+            'volatile_matter': 9.6089175,
+            'fixed_carbon': 76.3035,
+            'total_sulfur': 0.9,
+        },
+        {
+            'name': '宁煤3#烟煤（分析基）',
+            'price': 812.23,
+            'calorific_value': 6540.0,
+            'ash_content': 10.6145325,
+            'volatile_matter': 32.10714,
+            'fixed_carbon': 54.7783275,
+            'total_sulfur': 0.84,
+        },
+    ]
+    params = {
+        'heat_target': 6800,
+        'heat_min': 6000,
+        'heat_max': 7800,
+        'ash_min': 0.0,
+        'ash_limit': 20.0,
+        'volatile_min': 8.0,
+        'volatile_max': 40.0,
+        'fixed_carbon_min': 50.0,
+        'fixed_carbon_max': 85.0,
+        'sulfur_min': 0.0,
+        'sulfur_limit': 1.2,
+        'price_min': 0.0,
+        'price_limit': 1500.0,
+        'ratio_constraints': {
+            'min': [0.0, 0.0],
+            'max': [1.0, 1.0],
+        },
+    }
+
+    result = algorithm.calculate(coals, params, optimization_target='喷煤性价比最优')
+
+    assert result['status'] == 'success'
+    assert result['summary']['generations_used'] == 0
+    assert result['summary']['is_feasible'] is True
+    assert len(result['summary']['pareto_solutions']) >= 1
+    assert math.isclose(sum(result['summary']['recommended_solution']['optimal_ratios']), 1.0, rel_tol=0, abs_tol=1e-6)
+
+
 def test_returns_no_feasible_solution_when_constraints_conflict():
     algorithm = OptimizedSmartBlendingAlgorithm()
     coals = [

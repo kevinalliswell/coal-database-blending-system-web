@@ -774,6 +774,27 @@ class OptimizedSmartBlendingAlgorithm:
             evaluation['fitness'] = quality_penalty if evaluation['is_feasible'] else evaluation['fitness']
             return evaluation
 
+        if n_coals == 2:
+            fast_result = self._calculate_two_coal_fast_result(
+                coals=coals,
+                coal_names=coal_names,
+                prices=prices,
+                heat_values=heat_values,
+                ash_contents=ash_contents,
+                volatile_matters=volatile_matters,
+                fixed_carbons=fixed_carbons,
+                sulfur_contents=sulfur_contents,
+                metric_vectors=metric_vectors,
+                params=params,
+                ratio_limits=ratio_limits,
+                seed_ratios=seed_ratios,
+                feasible_seed=feasible_seed,
+                canonical_target=canonical_target,
+                objective_function=objective_function,
+            )
+            if fast_result is not None:
+                return fast_result
+
         nsga_optimizer = NSGA2BlendingOptimizer(self.optimizer)
         pareto_items = nsga_optimizer.optimize(
             objective_function,
@@ -860,6 +881,192 @@ class OptimizedSmartBlendingAlgorithm:
             'coal_results': coal_results,
             'summary': summary,
         }
+
+    def _calculate_two_coal_fast_result(
+        self,
+        coals,
+        coal_names,
+        prices,
+        heat_values,
+        ash_contents,
+        volatile_matters,
+        fixed_carbons,
+        sulfur_contents,
+        metric_vectors,
+        params,
+        ratio_limits,
+        seed_ratios,
+        feasible_seed,
+        canonical_target,
+        objective_function,
+    ) -> Optional[Dict]:
+        candidates = self._build_two_coal_ratio_candidates(
+            metric_vectors=metric_vectors,
+            params=params,
+            ratio_limits=ratio_limits,
+            seed_ratios=seed_ratios,
+        )
+        if not candidates:
+            return None
+
+        evaluated = []
+        for ratios in candidates:
+            item = objective_function(ratios)
+            if not item.get('is_feasible'):
+                continue
+            item['ratios'] = ratios
+            item['rank'] = 0
+            item['crowding_distance'] = 0.0
+            evaluated.append(item)
+
+        if not evaluated:
+            return None
+
+        sorter = NSGA2BlendingOptimizer(self.optimizer)
+        fronts = sorter.fast_non_dominated_sort(evaluated)
+        if not fronts:
+            return None
+
+        first_front = fronts[0]
+        sorter.assign_crowding_distance(first_front, evaluated)
+        pareto_items = [evaluated[index] for index in first_front if evaluated[index]['is_feasible']]
+        pareto_solutions = self._build_pareto_solutions(
+            pareto_items=pareto_items,
+            coal_names=coal_names,
+        )
+        if not pareto_solutions:
+            return None
+
+        recommended_solution = self._choose_recommended_solution(pareto_solutions)
+        final_ratios = recommended_solution['optimal_ratios']
+        final_key = tuple(round(value, 8) for value in final_ratios)
+        final_evaluation = next(
+            item for item in pareto_items
+            if tuple(round(value, 8) for value in item['ratios']) == final_key
+        )
+
+        coal_results = self._build_coal_results(
+            coals,
+            final_ratios,
+            prices,
+            heat_values,
+            ash_contents,
+            volatile_matters,
+            fixed_carbons,
+            sulfur_contents,
+        )
+
+        summary = {
+            'objective_type': self.OBJECTIVE_TYPE,
+            'optimization_target': canonical_target,
+            'total_price': final_evaluation['total_price'],
+            'total_heat': final_evaluation['total_heat'],
+            'total_ash': final_evaluation['total_ash'],
+            'total_volatile': final_evaluation['total_volatile'],
+            'total_fixed_carbon': final_evaluation['total_fixed_carbon'],
+            'total_sulfur': final_evaluation['total_sulfur'],
+            'performance_price_ratio': final_evaluation['performance_price_ratio'],
+            'fitness_score': recommended_solution['quality_penalty'],
+            'generations_used': 0,
+            'is_feasible': True,
+            'violation_score': 0.0,
+            'constraint_violations': [],
+            'active_constraints': final_evaluation['active_constraints'],
+            'diagnosis': feasible_seed['diagnosis'] + ['两煤种组合已通过快速配比扫描生成Pareto候选方案'],
+            'quality_penalty': recommended_solution['quality_penalty'],
+            'objective_values': recommended_solution['objective_values'],
+            'recommended_solution': recommended_solution,
+            'pareto_solutions': pareto_solutions,
+        }
+
+        return {
+            'status': 'success',
+            'message': '多目标Pareto优化完成',
+            'coal_results': coal_results,
+            'summary': summary,
+        }
+
+    def _build_two_coal_ratio_candidates(
+        self,
+        metric_vectors: Dict[str, np.ndarray],
+        params: Dict,
+        ratio_limits: Dict,
+        seed_ratios: List[float],
+    ) -> List[List[float]]:
+        lower = max(float(ratio_limits['min'][0]), 1.0 - float(ratio_limits['max'][1]), 0.0)
+        upper = min(float(ratio_limits['max'][0]), 1.0 - float(ratio_limits['min'][1]), 1.0)
+
+        specs = [
+            ('heat_min', 'heat', '>='),
+            ('heat_max', 'heat', '<='),
+            ('ash_min', 'ash', '>='),
+            ('ash_limit', 'ash', '<='),
+            ('volatile_min', 'volatile', '>='),
+            ('volatile_max', 'volatile', '<='),
+            ('fixed_carbon_min', 'fixed_carbon', '>='),
+            ('fixed_carbon_max', 'fixed_carbon', '<='),
+            ('sulfur_min', 'sulfur', '>='),
+            ('sulfur_limit', 'sulfur', '<='),
+            ('price_min', 'price', '>='),
+            ('price_limit', 'price', '<='),
+        ]
+
+        def tighten(coefficients, operator, limit_value):
+            nonlocal lower, upper
+            first = float(coefficients[0])
+            second = float(coefficients[1])
+            delta = first - second
+
+            if abs(delta) <= 1e-12:
+                if operator == '>=':
+                    return second >= limit_value - 1e-9
+                return second <= limit_value + 1e-9
+
+            boundary = (limit_value - second) / delta
+            if operator == '>=':
+                if delta > 0:
+                    lower = max(lower, boundary)
+                else:
+                    upper = min(upper, boundary)
+            else:
+                if delta > 0:
+                    upper = min(upper, boundary)
+                else:
+                    lower = max(lower, boundary)
+            return True
+
+        for param_key, metric_key, operator in specs:
+            if param_key not in params or params[param_key] is None:
+                continue
+            if not tighten(metric_vectors[metric_key], operator, float(params[param_key])):
+                return []
+
+        lower = max(lower, 0.0)
+        upper = min(upper, 1.0)
+        if lower > upper + 1e-9:
+            return []
+
+        solution_limit = int(self.optimizer.config.get('pareto_solution_limit', 20))
+        grid_size = max(41, min(201, solution_limit * 8 + 1))
+        points = {lower, upper, (lower + upper) / 2.0}
+        if seed_ratios:
+            points.add(float(seed_ratios[0]))
+        points.update(float(value) for value in np.linspace(lower, upper, grid_size))
+
+        candidates = []
+        seen = set()
+        for first_ratio in sorted(points):
+            raw = [first_ratio, 1.0 - first_ratio]
+            repaired = self.optimizer.repair_individual(raw, ratio_limits, raw)
+            if repaired is None:
+                continue
+            key = tuple(round(value, 8) for value in repaired)
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append(repaired)
+
+        return candidates
 
     def _build_pareto_solutions(self, pareto_items: List[Dict], coal_names: List[str]) -> List[Dict]:
         sorted_items = sorted(

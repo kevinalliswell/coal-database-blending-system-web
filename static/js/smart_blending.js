@@ -101,6 +101,8 @@ let performanceChartInstance = null;
 let constraintChartInstance = null;
 let autoSaveStatusTimer = null;
 let constraintSettingsModalInstance = null;
+let optimizationProgressTimer = null;
+let optimizationProgressStartedAt = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeSmartBlendingPage();
@@ -1043,7 +1045,7 @@ async function startOptimization() {
     try {
         optimizationInProgress = true;
         updateActionButtonsState();
-        showLoadingState('正在进行优化计算，请稍候...');
+        showLoadingState('正在进行优化计算，请稍候...', requestData);
         syncWorkspaceStatus('info', '正在执行多目标混煤优化计算。', '系统正在搜索满足约束的 Pareto 候选方案');
 
         const response = await fetch('/api/optimization', {
@@ -1058,10 +1060,12 @@ async function startOptimization() {
 
         if (['success', 'no_feasible_solution', 'search_failed'].includes(result.status)) {
             displayOptimizationResults(result.status, result.result, result.message);
-            scrollToResultsSection();
 
             if (result.status === 'success') {
                 showSuccessMessage('喷煤性价比优化完成！');
+                if (result.warning) {
+                    showWarningMessage(result.warning);
+                }
             } else if (result.status === 'no_feasible_solution') {
                 showWarningMessage(result.message || '当前约束下不存在可行混煤方案');
             } else {
@@ -1126,6 +1130,7 @@ function displayOptimizationResults(status, data, message) {
     const displayData = normalizeDisplayResult(data, data?.recommended_solution || null);
     latestDisplayedResult = displayData || null;
     lastOptimizationResult = displayData?.is_feasible ? displayData : null;
+    setResultsSectionVisible(Boolean(displayData));
 
     const ratios = [];
     const coalNames = Array.isArray(displayData?.coal_names) ? displayData.coal_names : [];
@@ -1958,7 +1963,6 @@ function updateQuickResultSummary(status = null, data = null, message = '') {
 
 function updateActionButtonsState() {
     const canStart = !optimizationInProgress && selectedCoals.size >= 2;
-    const canScrollToResults = Boolean(latestDisplayedResult);
     const canExport = Boolean(lastOptimizationResult) && !exportInProgress;
 
     document.querySelectorAll('.start-optimization-btn').forEach(button => {
@@ -1988,7 +1992,9 @@ function updateActionButtonsState() {
     ];
     scrollButtons.forEach(button => {
         if (button) {
-            button.disabled = !canScrollToResults;
+            button.disabled = optimizationInProgress;
+            button.classList.toggle('btn-outline-primary', Boolean(latestDisplayedResult));
+            button.classList.toggle('btn-outline-secondary', !latestDisplayedResult);
         }
     });
 
@@ -2017,6 +2023,7 @@ function invalidateOptimizationResults(statusMessage) {
 function clearOptimizationResults() {
     latestDisplayedResult = null;
     lastOptimizationResult = null;
+    setResultsSectionVisible(false);
     updateRatioTable([], null);
     resetPerformanceIndicators();
     resetAlgorithmInfo();
@@ -2134,9 +2141,22 @@ function syncWorkspaceStatus(tone, text, hint = '') {
     }
 }
 
-function scrollToResultsSection() {
+function setResultsSectionVisible(visible) {
     const section = document.getElementById('resultsSection');
     if (section) {
+        section.classList.toggle('d-none', !visible);
+    }
+}
+
+function scrollToResultsSection() {
+    const section = document.getElementById('resultsSection');
+    if (!latestDisplayedResult) {
+        syncWorkspaceStatus('warning', '尚未生成优化结果。', '请先选择至少两种煤并运行优化计算，再查看详细结果');
+        showWarningMessage('还没有可查看的优化结果，请先运行优化计算。');
+        return;
+    }
+    if (section) {
+        setResultsSectionVisible(true);
         section.scrollIntoView({
             behavior: 'smooth',
             block: 'start'
@@ -2228,12 +2248,129 @@ function updateTextContent(elementId, value) {
     }
 }
 
-function showLoadingState(message) {
+function showLoadingState(message, requestData = null) {
     console.log('Loading:', message);
+
+    if (!String(message || '').includes('优化')) {
+        return;
+    }
+
+    const panel = document.getElementById('optimizationProgressPanel');
+    if (!panel) {
+        return;
+    }
+
+    optimizationProgressStartedAt = Date.now();
+    panel.classList.remove('d-none');
+
+    updateOptimizationProgress(requestData);
+    clearInterval(optimizationProgressTimer);
+    optimizationProgressTimer = setInterval(() => {
+        updateOptimizationProgress(requestData);
+    }, 1000);
 }
 
 function hideLoadingState() {
     console.log('Loading complete');
+    clearInterval(optimizationProgressTimer);
+    optimizationProgressTimer = null;
+    optimizationProgressStartedAt = null;
+
+    const panel = document.getElementById('optimizationProgressPanel');
+    if (panel) {
+        panel.classList.add('d-none');
+    }
+}
+
+function updateOptimizationProgress(requestData = null) {
+    const panel = document.getElementById('optimizationProgressPanel');
+    const titleElement = document.getElementById('optimizationProgressTitle');
+    const metaElement = document.getElementById('optimizationProgressMeta');
+    const hintElement = document.getElementById('optimizationProgressHint');
+    const barElement = document.getElementById('optimizationProgressBar');
+    if (!panel || !titleElement || !metaElement || !hintElement || !barElement || !optimizationProgressStartedAt) {
+        return;
+    }
+
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - optimizationProgressStartedAt) / 1000));
+    const estimatedSeconds = estimateOptimizationWaitSeconds(requestData);
+    const selectedCount = Array.isArray(requestData?.selected_coal_ids) ? requestData.selected_coal_ids.length : selectedCoals.size;
+    const progress = getOptimizationProgressState(elapsedSeconds, estimatedSeconds, selectedCount);
+
+    titleElement.textContent = progress.title;
+    metaElement.textContent = `已等待 ${elapsedSeconds} 秒，预计 ${formatEstimatedWait(estimatedSeconds)}`;
+    hintElement.textContent = progress.hint;
+    barElement.style.width = `${progress.percent}%`;
+    barElement.setAttribute('aria-valuenow', String(progress.percent));
+}
+
+function estimateOptimizationWaitSeconds(requestData = null) {
+    const selectedCount = Array.isArray(requestData?.selected_coal_ids) ? requestData.selected_coal_ids.length : selectedCoals.size;
+    if (selectedCount <= 2) {
+        return 5;
+    }
+
+    const gaParams = requestData?.ga_params || smartBlendingPreferences.gaParams || {};
+    const populationSize = Number(gaParams.population_size || DEFAULT_GA_PARAMS.population_size);
+    const maxGenerations = Number(gaParams.max_generations || DEFAULT_GA_PARAMS.max_generations);
+    const workload = populationSize * maxGenerations;
+
+    if (workload <= 50000) {
+        return 20;
+    }
+    if (workload <= 300000) {
+        return 45;
+    }
+    return 90;
+}
+
+function formatEstimatedWait(seconds) {
+    if (seconds <= 10) {
+        return '几秒内完成';
+    }
+    if (seconds <= 60) {
+        return `${seconds} 秒左右`;
+    }
+    return '1 分钟以上';
+}
+
+function getOptimizationProgressState(elapsedSeconds, estimatedSeconds, selectedCount) {
+    if (selectedCount <= 2) {
+        const percent = Math.min(92, 20 + elapsedSeconds * 18);
+        return {
+            percent,
+            title: elapsedSeconds <= 1 ? '正在快速扫描两煤种配比' : '正在筛选可行 Pareto 候选',
+            hint: '两煤种组合会走快速配比扫描，通常几秒内返回结果。'
+        };
+    }
+
+    const ratio = estimatedSeconds > 0 ? elapsedSeconds / estimatedSeconds : 0;
+    if (ratio < 0.2) {
+        return {
+            percent: 12,
+            title: '正在校验约束与配比边界',
+            hint: '系统会先确认热值、灰分、挥发分、固定碳、硫分和价格约束是否可行。'
+        };
+    }
+    if (ratio < 0.55) {
+        return {
+            percent: Math.min(55, 20 + Math.round(ratio * 45)),
+            title: '正在搜索可行混煤方案',
+            hint: '算法正在生成候选配比，煤种越多或迭代参数越高，等待时间会更长。'
+        };
+    }
+    if (ratio < 1) {
+        return {
+            percent: Math.min(82, 45 + Math.round(ratio * 35)),
+            title: '正在整理 Pareto 候选方案',
+            hint: '系统正在比较成本、热值和质量风险，完成后会自动展示推荐方案。'
+        };
+    }
+    return {
+        percent: 92,
+        title: '仍在计算，请继续等待',
+        hint: '当前请求还在服务端执行，请勿重复点击；如长时间无响应，可适当降低种群规模或迭代次数。'
+    };
 }
 
 function showSuccessMessage(message) {

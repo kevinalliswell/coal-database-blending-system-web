@@ -108,6 +108,19 @@
                             选择至少两种煤后即可直接开始优化
                         </div>
                     </div>
+                    <div class="optimization-progress d-none" id="optimizationProgressPanel" aria-live="polite">
+                        <div class="optimization-progress__top">
+                            <div class="optimization-progress__title">
+                                <i class="bi bi-hourglass-split me-2"></i>
+                                <span id="optimizationProgressTitle">计算准备中</span>
+                            </div>
+                            <div class="optimization-progress__meta" id="optimizationProgressMeta">预计等待几秒到几十秒</div>
+                        </div>
+                        <div class="progress optimization-progress__bar">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" id="optimizationProgressBar" role="progressbar" style="width: 8%"></div>
+                        </div>
+                        <div class="optimization-progress__hint" id="optimizationProgressHint">确认后系统会先校验约束，再执行混煤计算</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -290,7 +303,7 @@
                                 <button type="button" class="btn btn-success btn-lg start-optimization-btn" data-action="start-optimization" data-open-reason="start">
                                     <i class="bi bi-play-circle me-2"></i>开始优化计算
                                 </button>
-                                <button type="button" class="btn btn-outline-primary" id="scrollToResultsBtn" disabled>
+                                <button type="button" class="btn btn-outline-primary" id="scrollToResultsBtn">
                                     <i class="bi bi-arrow-down-circle me-2"></i>查看详细结果
                                 </button>
                                 <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#algorithmSettingsModal">
@@ -303,7 +316,7 @@
             </div>
         </div>
 
-        <div class="row mb-4" id="resultsSection">
+        <div class="row mb-4 d-none" id="resultsSection">
             <div class="col-md-12">
                 <div class="card result-card">
                     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -529,7 +542,7 @@
             <button type="button" class="btn btn-success btn-sm start-optimization-btn" data-action="start-optimization" data-open-reason="start">
                 <i class="bi bi-play-circle me-1"></i>开始优化
             </button>
-            <button type="button" class="btn btn-outline-primary btn-sm" id="scrollToResultsBtnMobile" disabled>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="scrollToResultsBtnMobile">
                 <i class="bi bi-arrow-down-circle me-1"></i>查看结果
             </button>
         </div>

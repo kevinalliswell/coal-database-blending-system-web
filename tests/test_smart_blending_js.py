@@ -1,4 +1,5 @@
 import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -10,7 +11,7 @@ const elements = new Map();
 const queryElements = new Map();
 
 function makeElement(id) {
-  return {
+  const element = {
     id,
     textContent: '',
     innerHTML: '',
@@ -27,13 +28,34 @@ function makeElement(id) {
     querySelector() { return null; },
     querySelectorAll() { return []; },
     scrollIntoView() {},
-    classList: {
-      add() {},
-      remove() {},
-      toggle() {},
-      contains() { return false; },
+  };
+  element.classList = {
+    add(...names) {
+      const classes = new Set(element.className.split(/\s+/).filter(Boolean));
+      names.forEach(name => classes.add(name));
+      element.className = Array.from(classes).join(' ');
+    },
+    remove(...names) {
+      const classes = new Set(element.className.split(/\s+/).filter(Boolean));
+      names.forEach(name => classes.delete(name));
+      element.className = Array.from(classes).join(' ');
+    },
+    toggle(name, force) {
+      const classes = new Set(element.className.split(/\s+/).filter(Boolean));
+      const shouldAdd = force === undefined ? !classes.has(name) : Boolean(force);
+      if (shouldAdd) {
+        classes.add(name);
+      } else {
+        classes.delete(name);
+      }
+      element.className = Array.from(classes).join(' ');
+      return shouldAdd;
+    },
+    contains(name) {
+      return element.className.split(/\s+/).filter(Boolean).includes(name);
     },
   };
+  return element;
 }
 
 function getQueryElement(selector) {
@@ -67,16 +89,28 @@ global.bootstrap = {
 };
 global.Chart = function() { return { destroy() {}, update() {} }; };
 global.fetch = async () => ({ ok: true, json: async () => ({ status: 'success', data: [] }) });
-global.alert = function() {};
-global.navigator = { clipboard: { writeText: async () => {} } };
-"""
-    result = subprocess.run(
-        ["node", "-e", harness + "\n" + script + "\n" + extra_script],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    global.alert = function() {};
+    global.navigator = { clipboard: { writeText: async () => {} } };
+    """
+    with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False, encoding='utf-8', dir=Path.cwd()) as temp_file:
+        temp_file.write(harness)
+        temp_file.write("\n")
+        temp_file.write(script)
+        temp_file.write("\n")
+        temp_file.write(extra_script)
+        temp_path = temp_file.name
+
+    try:
+        result = subprocess.run(
+            ["node", temp_path],
+            text=True,
+            encoding='utf-8',
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
 
     assert result.returncode == 0, result.stderr
     return result
@@ -84,6 +118,63 @@ global.navigator = { clipboard: { writeText: async () => {} } };
 
 def test_quick_result_summary_default_state_does_not_throw():
     run_smart_blending_script("updateQuickResultSummary();\n")
+
+
+def test_optimization_progress_panel_updates_waiting_feedback():
+    extra_script = r"""
+const requestData = {
+  selected_coal_ids: [1, 6],
+  ga_params: {
+    population_size: 500,
+    max_generations: 3000
+  }
+};
+
+showLoadingState('正在进行优化计算，请稍候...', requestData);
+updateOptimizationProgress(requestData);
+
+const title = document.getElementById('optimizationProgressTitle');
+const meta = document.getElementById('optimizationProgressMeta');
+const hint = document.getElementById('optimizationProgressHint');
+const bar = document.getElementById('optimizationProgressBar');
+
+if (!title.textContent.includes('快速扫描') && !title.textContent.includes('Pareto')) {
+  throw new Error('Optimization progress title was not updated');
+}
+if (!meta.textContent.includes('已等待')) {
+  throw new Error('Optimization progress meta was not updated');
+}
+if (!hint.textContent.includes('几秒')) {
+  throw new Error('Optimization progress hint was not updated');
+}
+if (!bar.style.width || !bar.style.width.endsWith('%')) {
+  throw new Error('Optimization progress bar width was not updated');
+}
+
+hideLoadingState();
+"""
+    run_smart_blending_script(extra_script)
+
+
+def test_view_results_button_warns_until_result_exists():
+    extra_script = r"""
+let warningMessage = '';
+global.alert = function(message) { warningMessage = message; };
+document.getElementById('resultsSection').classList.add('d-none');
+
+scrollToResultsSection();
+
+if (!warningMessage) {
+  throw new Error('View results did not warn when no result exists');
+}
+if (document.getElementById('resultsSection').classList.contains('d-none') === false) {
+  throw new Error('Results section should stay hidden before optimization');
+}
+if (document.getElementById('workspaceStatusBar').attributes['data-tone'] !== 'warning') {
+  throw new Error('Workspace status was not updated to warning');
+}
+"""
+    run_smart_blending_script(extra_script)
 
 
 def test_pareto_solutions_render_and_can_be_selected():
@@ -149,6 +240,11 @@ const data = {
 };
 
 displayOptimizationResults('success', data, 'ok');
+document.getElementById('resultsSection').classList.add('d-none');
+displayOptimizationResults('success', data, 'ok');
+if (document.getElementById('resultsSection').classList.contains('d-none')) {
+  throw new Error('Results section stayed hidden after optimization result');
+}
 const paretoBody = document.querySelector('.pareto-solutions-table tbody');
 if (!paretoBody.innerHTML.includes('pareto_002')) {
   throw new Error('Pareto table did not render second solution');

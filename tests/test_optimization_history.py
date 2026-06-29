@@ -1,6 +1,7 @@
 import csv
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from app import create_app
 from app.config import Config
@@ -174,6 +175,26 @@ def test_optimization_history_is_persisted_and_queryable(app_client):
     assert detail_payload['status'] == 'success'
     assert detail_payload['data']['request_payload']['selected_coal_ids'] == [1, 2, 3]
     assert detail_payload['data']['result_payload']['status'] == 'success'
+
+
+def test_optimization_result_is_returned_when_history_save_fails(app_client, monkeypatch):
+    from backend.routes import optimization as optimization_routes
+
+    _, client = app_client
+
+    def fail_history_save(*_args, **_kwargs):
+        raise SQLAlchemyError('missing optimization_history table')
+
+    monkeypatch.setattr(optimization_routes, '_save_optimization_history', fail_history_save)
+
+    response = client.post('/api/optimization', json=build_optimization_payload())
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload['status'] == 'success'
+    assert payload['history_saved'] is False
+    assert '历史记录保存失败' in payload['warning']
+    assert payload['result']['is_feasible'] is True
 
 
 def test_replacement_ratio_theory_history_is_persisted_and_queryable(app_client):
