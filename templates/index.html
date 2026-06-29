@@ -10,7 +10,6 @@
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any">
 </head>
 <body>
-    <!-- 导航栏 -->
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container">
             <a class="navbar-brand" href="/">
@@ -42,584 +41,159 @@
                             <li><a class="dropdown-item" href="/optimization_history/replacement_ratio">置换比历史</a></li>
                         </ul>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#"><i class="bi bi-gear me-1"></i>系统设置</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#"><i class="bi bi-question-circle me-1"></i>帮助</a>
-                    </li>
                 </ul>
             </div>
         </div>
     </nav>
 
-    <!-- 主内容区 -->
-    <div class="container my-4">
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <div class="alert alert-primary" role="alert">
-                    <i class="bi bi-info-circle-fill me-2"></i>
-                    欢迎使用煤种数据库管理及配煤优化系统！本系统基于遗传算法，可帮助您找到最优的煤种配比方案。
+    <main class="container my-4 home-dashboard">
+        <section class="page-hero mb-4">
+            <div class="page-hero__body">
+                <div class="page-hero__content">
+                    <div class="page-hero__eyebrow">Production Workspace</div>
+                    <h1 class="page-hero__title">煤种数据与喷煤优化工作台</h1>
+                    <p class="page-hero__subtitle mb-0">从同一份 SQLite 数据出发，维护煤种指标、运行智能混煤、计算置换比，并回看历史结果。</p>
+                    <div class="page-hero__chips">
+                        <span class="hero-chip"><i class="bi bi-database-check me-1"></i><span id="storageModeChip">SQLite</span></span>
+                        <span class="hero-chip"><i class="bi bi-clock-history me-1"></i><span id="lastRefreshChip">正在同步</span></span>
+                    </div>
+                </div>
+                <div class="page-hero__meta">
+                    <span class="page-hero__meta-label">服务状态</span>
+                    <span class="hero-status-pill" data-tone="info" id="healthStatusPill">
+                        <i class="bi bi-activity me-1"></i>检查中
+                    </span>
+                    <div class="page-hero__meta-divider"></div>
+                    <span class="page-hero__meta-label">今日入口</span>
+                    <a href="/smart_blending" class="btn btn-primary btn-sm mt-2">
+                        <i class="bi bi-play-circle me-1"></i>开始智能混煤
+                    </a>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- 系统功能导航 -->
-        <div class="row mb-4">
-            <div class="col-md-3 mb-3">
-                <div class="card h-100 shadow-sm">
-                    <div class="card-body text-center">
-                        <i class="bi bi-database display-4 text-primary mb-3"></i>
-                        <h5 class="card-title">煤种数据管理</h5>
-                        <p class="card-text">添加、编辑、删除煤种数据，支持批量导入导出功能。</p>
-                        <a href="/coal_management" class="btn btn-primary">
-                            <i class="bi bi-arrow-right me-1"></i>进入管理
-                        </a>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card h-100 shadow-sm">
-                    <div class="card-body text-center">
-                        <i class="bi bi-cpu display-4 text-success mb-3"></i>
-                        <h5 class="card-title">智能混煤</h5>
-                        <p class="card-text">基于遗传算法的智能混煤优化，找到最优配比方案。</p>
-                        <a href="/smart_blending" class="btn btn-success">
-                            <i class="bi bi-arrow-right me-1"></i>开始优化
-                        </a>
-                    </div>
-                </div>
-                        </div>
-            <div class="col-md-3 mb-3">
-                <div class="card h-100 shadow-sm">
-                    <div class="card-body text-center">
-                        <i class="bi bi-calculator display-4 text-warning mb-3"></i>
-                        <h5 class="card-title">置换比计算</h5>
-                        <p class="card-text">计算理论置换比和实际置换比，分析煤种替换效果。</p>
-                        <a href="/replacement_ratio" class="btn btn-warning">
-                            <i class="bi bi-arrow-right me-1"></i>开始计算
-                        </a>
-                    </div>
-                        </div>
-                        </div>
-            <div class="col-md-3 mb-3">
-                <div class="card h-100 shadow-sm">
-                    <div class="card-body text-center">
-                        <i class="bi bi-graph-up display-4 text-info mb-3"></i>
-                        <h5 class="card-title">优化历史</h5>
-                        <p class="card-text">查看历史优化记录，分析优化效果和趋势。</p>
-                        <a href="#" class="btn btn-info">
-                            <i class="bi bi-arrow-right me-1"></i>查看历史
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <section class="home-stat-grid mb-4">
+            <article class="home-stat-card">
+                <span class="home-stat-card__label">煤种总数</span>
+                <strong class="home-stat-card__value" id="totalCoals">--</strong>
+                <span class="home-stat-card__hint">来自 SQLite 煤种表</span>
+            </article>
+            <article class="home-stat-card">
+                <span class="home-stat-card__label">混煤优化历史</span>
+                <strong class="home-stat-card__value" id="totalOptimizations">--</strong>
+                <span class="home-stat-card__hint">已持久化方案数</span>
+            </article>
+            <article class="home-stat-card">
+                <span class="home-stat-card__label">置换比历史</span>
+                <strong class="home-stat-card__value" id="totalCalculations">--</strong>
+                <span class="home-stat-card__hint">理论与实际计算记录</span>
+            </article>
+            <article class="home-stat-card">
+                <span class="home-stat-card__label">平均混煤耗时</span>
+                <strong class="home-stat-card__value" id="avgTime">--</strong>
+                <span class="home-stat-card__hint">最近历史记录统计</span>
+            </article>
+        </section>
 
-        <!-- 系统统计 -->
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header">
-                        <i class="bi bi-bar-chart me-2"></i>系统统计
+        <section class="home-action-grid mb-4">
+            <a class="home-action-card" href="/coal_management">
+                <span class="home-action-card__icon text-primary"><i class="bi bi-database"></i></span>
+                <span class="home-action-card__title">煤种数据管理</span>
+                <span class="home-action-card__text">维护煤种、导入文件、导出 SQLite 数据。</span>
+                <span class="home-action-card__cta">进入管理 <i class="bi bi-arrow-right"></i></span>
+            </a>
+            <a class="home-action-card" href="/smart_blending">
+                <span class="home-action-card__icon text-success"><i class="bi bi-cpu"></i></span>
+                <span class="home-action-card__title">智能混煤优化</span>
+                <span class="home-action-card__text">选择煤种并确认约束，生成 Pareto 推荐方案。</span>
+                <span class="home-action-card__cta">开始优化 <i class="bi bi-arrow-right"></i></span>
+            </a>
+            <a class="home-action-card" href="/replacement_ratio">
+                <span class="home-action-card__icon text-warning"><i class="bi bi-calculator"></i></span>
+                <span class="home-action-card__title">置换比计算</span>
+                <span class="home-action-card__text">计算理论置换比和实际生产置换比。</span>
+                <span class="home-action-card__cta">开始计算 <i class="bi bi-arrow-right"></i></span>
+            </a>
+            <a class="home-action-card" href="/optimization_history/blending">
+                <span class="home-action-card__icon text-info"><i class="bi bi-clock-history"></i></span>
+                <span class="home-action-card__title">历史结果</span>
+                <span class="home-action-card__text">回看混煤优化和置换比计算的数据库记录。</span>
+                <span class="home-action-card__cta">查看历史 <i class="bi bi-arrow-right"></i></span>
+            </a>
+        </section>
+
+        <div class="row g-4">
+            <section class="col-lg-8">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-activity me-2"></i>最近活动</span>
+                        <button class="btn btn-sm btn-outline-light" id="refreshDashboardBtn">
+                            <i class="bi bi-arrow-repeat me-1"></i>刷新
+                        </button>
                     </div>
                     <div class="card-body">
-                        <div class="row text-center">
-                            <div class="col-md-3">
-                                <div class="card bg-light">
-                                    <div class="card-body">
-                                        <i class="bi bi-layers display-4 text-primary"></i>
-                                        <h3 class="mt-2" id="totalCoals">--</h3>
-                                        <p class="mb-0">煤种总数</p>
-                                </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card bg-light">
-                                    <div class="card-body">
-                                        <i class="bi bi-cpu-fill display-4 text-success"></i>
-                                        <h3 class="mt-2" id="totalOptimizations">--</h3>
-                                        <p class="mb-0">优化次数</p>
-                                </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card bg-light">
-                                    <div class="card-body">
-                                        <i class="bi bi-calculator-fill display-4 text-warning"></i>
-                                        <h3 class="mt-2" id="totalCalculations">--</h3>
-                                        <p class="mb-0">置换比计算</p>
-                                </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card bg-light">
-                                    <div class="card-body">
-                                        <i class="bi bi-clock-fill display-4 text-info"></i>
-                                        <h3 class="mt-2" id="avgTime">--</h3>
-                                        <p class="mb-0">平均计算时间(秒)</p>
-                                </div>
-                                </div>
-                            </div>
+                        <div class="home-activity-list" id="recentActivities">
+                            <div class="history-empty-state">正在加载最近活动...</div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
+            </section>
 
-        <!-- 最近活动 -->
-        <div class="row mb-4">
-            <div class="col-md-8">
-                <div class="card">
+            <section class="col-lg-4">
+                <div class="card h-100">
                     <div class="card-header">
-                        <i class="bi bi-clock-history me-2"></i>最近活动
+                        <i class="bi bi-info-circle me-2"></i>运行信息
                     </div>
                     <div class="card-body">
-                        <div class="list-group list-group-flush" id="recentActivities">
-                            <div class="list-group-item text-center text-muted">
-                                暂无活动记录
-                                        </div>
-                                    </div>
-                                    </div>
-                                </div>
-                            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-header">
-                        <i class="bi bi-info-circle me-2"></i>系统信息
-                                        </div>
-                    <div class="card-body">
-                                        <table class="table table-sm">
-                                            <tbody>
-                                                <tr>
-                                    <th>系统版本:</th>
-                                    <td>v2.0.0</td>
-                                                </tr>
-                                                <tr>
-                                    <th>算法版本:</th>
-                                    <td>GA v3.0</td>
-                                                </tr>
-                                                <tr>
-                                    <th>数据库:</th>
-                                    <td>db文件</td>
-                                                </tr>
-                                                <tr>
-                                    <th>最后更新:</th>
-                                    <td>2025-06-14</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                        <div class="d-grid">
-                            <button class="btn btn-outline-secondary btn-sm" onclick="checkForUpdates()">
-                                <i class="bi bi-arrow-repeat me-1"></i>检查更新
-                            </button>
+                        <div class="home-runtime-list">
+                            <div class="history-stat-item"><span>应用</span><strong id="runtimeApp">--</strong></div>
+                            <div class="history-stat-item"><span>存储模式</span><strong id="runtimeStorage">--</strong></div>
+                            <div class="history-stat-item"><span>煤种记录</span><strong id="runtimeCoalCount">--</strong></div>
+                            <div class="history-stat-item"><span>数据同步</span><strong id="runtimeSyncAt">--</strong></div>
                         </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 快速开始 -->
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header">
-                        <i class="bi bi-rocket me-2"></i>快速开始
-                                    </div>
-                    <div class="card-body">
-                        <p>开始使用煤种数据库管理及配煤优化系统，只需几个简单步骤：</p>
-                        <div class="row">
-                            <div class="col-md-3 text-center mb-3">
-                                <div class="step-box">
-                                    <div class="step-number bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center">1</div>
-                                    <h6 class="mt-2">管理煤种数据</h6>
-                                    <p class="text-muted small">添加或导入煤种数据</p>
-                                </div>
-                            </div>
-                            <div class="col-md-3 text-center mb-3">
-                                <div class="step-box">
-                                    <div class="step-number bg-success text-white rounded-circle d-inline-flex align-items-center justify-content-center">2</div>
-                                    <h6 class="mt-2">选择煤种</h6>
-                                    <p class="text-muted small">在智能混煤中选择要优化的煤种</p>
-                                        </div>
-                                    </div>
-                            <div class="col-md-3 text-center mb-3">
-                                <div class="step-box">
-                                    <div class="step-number bg-warning text-white rounded-circle d-inline-flex align-items-center justify-content-center">3</div>
-                                    <h6 class="mt-2">设置约束</h6>
-                                    <p class="text-muted small">配置优化约束条件</p>
-                                    </div>
-                                    </div>
-                            <div class="col-md-3 text-center mb-3">
-                                <div class="step-box">
-                                    <div class="step-number bg-info text-white rounded-circle d-inline-flex align-items-center justify-content-center">4</div>
-                                    <h6 class="mt-2">开始优化</h6>
-                                    <p class="text-muted small">运行算法获得最优配比</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="text-center mt-3">
-                            <a href="/smart_blending" class="btn btn-primary btn-lg me-2">
-                                <i class="bi bi-cpu me-1"></i>开始智能混煤
+                        <div class="d-grid gap-2 mt-3">
+                            <a href="/coal_management" class="btn btn-outline-primary">
+                                <i class="bi bi-database me-1"></i>检查煤种数据
                             </a>
-                            <a href="/coal_management" class="btn btn-outline-primary btn-lg">
-                                <i class="bi bi-database me-1"></i>管理煤种数据
+                            <a href="/optimization_history/replacement_ratio" class="btn btn-outline-secondary">
+                                <i class="bi bi-clock-history me-1"></i>查看置换比历史
                             </a>
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
         </div>
-    </div>
+    </main>
 
-    <!-- 页脚 -->
     <footer class="footer py-4 mt-5">
         <div class="container">
-            <div class="row">
+            <div class="row g-4">
                 <div class="col-md-6">
                     <h5>煤种数据库管理及配煤优化系统</h5>
-                    <p>基于遗传算法的智能混煤优化系统，帮助您找到最优的煤种配比方案。</p>
+                    <p>面向喷煤配煤场景的数据维护、优化计算和历史追踪工作台。</p>
                 </div>
                 <div class="col-md-3">
                     <h5>快速链接</h5>
                     <ul class="list-unstyled">
-                        <li><a href="#" class="text-white">首页</a></li>
-                        <li><a href="#" class="text-white">煤种数据</a></li>
-                        <li><a href="#" class="text-white">优化历史</a></li>
-                        <li><a href="#" class="text-white">系统设置</a></li>
+                        <li><a href="/coal_management" class="text-white">煤种数据</a></li>
+                        <li><a href="/smart_blending" class="text-white">智能混煤</a></li>
+                        <li><a href="/replacement_ratio" class="text-white">置换比计算</a></li>
+                        <li><a href="/optimization_history/blending" class="text-white">混煤历史</a></li>
                     </ul>
                 </div>
                 <div class="col-md-3">
-                    <h5>联系我们</h5>
+                    <h5>数据链路</h5>
                     <ul class="list-unstyled">
-                        <li><i class="bi bi-envelope me-2"></i>support@coalblending.com</li>
-                        <li><i class="bi bi-telephone me-2"></i>400-123-4567</li>
+                        <li><i class="bi bi-database-check me-2"></i>SQLite 运行存储</li>
+                        <li><i class="bi bi-file-earmark-spreadsheet me-2"></i>CSV/Excel 导入</li>
                     </ul>
-                </div>
-            </div>
-            <hr class="my-4 bg-light">
-            <div class="row">
-                <div class="col-md-12 text-center">
-                    <p class="mb-0">© 2025 煤种数据库管理及配煤优化系统 版权所有</p>
                 </div>
             </div>
         </div>
     </footer>
 
-    <!-- 模态框：煤种详情 -->
-    <div class="modal fade" id="coalDetailModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">煤种详细信息</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>基本信息</h6>
-                            <table class="table table-bordered">
-                                <tbody>
-                                    <tr>
-                                        <th>煤种名称</th>
-                                        <td>包钢矿业洗末煤 S1.0</td>
-                                    </tr>
-                                    <tr>
-                                        <th>煤种类型</th>
-                                        <td>无烟煤</td>
-                                    </tr>
-                                    <tr>
-                                        <th>供应商/产地</th>
-                                        <td>包钢</td>
-                                    </tr>
-                                    <tr>
-                                        <th>价格(元/吨)</th>
-                                        <td>910.0</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>技术指标</h6>
-                            <table class="table table-bordered">
-                                <tbody>
-                                    <tr>
-                                        <th>热值(kcal/kg)</th>
-                                        <td>5657.0</td>
-                                    </tr>
-                                    <tr>
-                                        <th>灰分(%)</th>
-                                        <td>20.0349</td>
-                                    </tr>
-                                    <tr>
-                                        <th>挥发分(%)</th>
-                                        <td>7.9301</td>
-                                    </tr>
-                                    <tr>
-                                        <th>固定碳(%)</th>
-                                        <td>79.0351</td>
-                                    </tr>
-                                    <tr>
-                                        <th>硫含量(%)</th>
-                                        <td>0.96</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="row mt-3">
-                        <div class="col-md-12">
-                            <h6>其他指标</h6>
-                            <table class="table table-bordered">
-                                <tbody>
-                                    <tr>
-                                        <th>全水Mt(%)</th>
-                                        <td>8.45</td>
-                                        <th>空干基水分(%)</th>
-                                        <td>3.2</td>
-                                        <th>可磨性HGI</th>
-                                        <td>65</td>
-                                    </tr>
-                                    <tr>
-                                        <th>燃尽率(%)</th>
-                                        <td>98.2</td>
-                                        <th></th>
-                                        <td></td>
-                                        <th></th>
-                                        <td></td>
-                                    </tr>
-                                    <tr>
-                                        <th>含碳量C(%)</th>
-                                        <td>75.32</td>
-                                        <th>含氢量H(%)</th>
-                                        <td>3.15</td>
-                                        <th>含氮量N(%)</th>
-                                        <td>0.85</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-                    <button type="button" class="btn btn-primary">编辑信息</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="homeToastContainer"></div>
 
-    <!-- 模态框：添加煤种 -->
-    <div class="modal fade" id="addCoalModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">添加新煤种</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">煤种名称</label>
-                                <input type="text" class="form-control" placeholder="输入煤种名称">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">煤种类型</label>
-                                <select class="form-select">
-                                    <option>烟煤</option>
-                                    <option>无烟煤</option>
-                                    <option>褐煤</option>
-                                    <option>贫煤</option>
-                                    <option>其他</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">供应商/产地</label>
-                                <input type="text" class="form-control" placeholder="输入供应商或产地">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">价格(元/吨)</label>
-                                <input type="number" class="form-control" placeholder="输入价格">
-                            </div>
-                        </div>
-                        
-                        <h6 class="mt-4 mb-3">技术指标</h6>
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label">热值(kcal/kg)</label>
-                                <input type="number" class="form-control" placeholder="输入热值">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">灰分(%)</label>
-                                <input type="number" class="form-control" step="0.01" placeholder="输入灰分">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">挥发分(%)</label>
-                                <input type="number" class="form-control" step="0.01" placeholder="输入挥发分">
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label">固定碳(%)</label>
-                                <input type="number" class="form-control" step="0.01" placeholder="输入固定碳">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">硫含量(%)</label>
-                                <input type="number" class="form-control" step="0.01" placeholder="输入硫含量">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">全水Mt(%)</label>
-                                <input type="number" class="form-control" step="0.01" placeholder="输入全水">
-                            </div>
-                        </div>
-                        
-                        <h6 class="mt-4 mb-3">其他指标 (可选)</h6>
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label">可磨性HGI</label>
-                                <input type="number" class="form-control" placeholder="输入可磨性">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">燃尽率(%)</label>
-                                <input type="number" class="form-control" step="0.01" placeholder="输入燃尽率">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">含碳量C(%)</label>
-                                <input type="number" class="form-control" step="0.01" placeholder="输入含碳量">
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label">含氢量H(%)</label>
-                                <input type="number" class="form-control" step="0.01" placeholder="输入含氢量">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">含氮量N(%)</label>
-                                <input type="number" class="form-control" step="0.01" placeholder="输入含氮量">
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-primary">保存煤种</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 模态框：算法设置 -->
-    <div class="modal fade" id="algorithmSettingsModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">算法参数设置</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="algorithmSettingsForm">
-                        <h6 class="mb-3">基础参数</h6>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">种群大小</label>
-                                <input type="number" class="form-control" id="populationSize" value="500" min="50" max="2000">
-                                <div class="form-text">遗传算法种群大小，影响搜索精度和计算时间</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">最大迭代次数</label>
-                                <input type="number" class="form-control" id="maxGenerations" value="3000" min="100" max="10000">
-                                <div class="form-text">算法最大迭代次数</div>
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">变异率</label>
-                                <input type="number" class="form-control" id="mutationRate" value="0.2" step="0.01" min="0" max="1">
-                                <div class="form-text">基因变异概率</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">交叉率</label>
-                                <input type="number" class="form-control" id="crossoverRate" value="0.85" step="0.01" min="0" max="1">
-                                <div class="form-text">个体交叉概率</div>
-                            </div>
-                        </div>
-                        
-                        <hr>
-                        <h6 class="mb-3">高级参数</h6>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">锦标赛大小</label>
-                                <input type="number" class="form-control" id="tournamentSize" value="7" min="2" max="20">
-                                <div class="form-text">选择父代个体时的锦标赛规模</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">精英比例</label>
-                                <input type="number" class="form-control" id="eliteRatio" value="0.1" step="0.01" min="0" max="0.5">
-                                <div class="form-text">直接进入下一代的最优个体比例</div>
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">早停耐心值</label>
-                                <input type="number" class="form-control" id="earlyStoppingPatience" value="200" min="50" max="1000">
-                                <div class="form-text">连续多少代无改进后停止迭代</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">约束惩罚因子</label>
-                                <input type="number" class="form-control" id="constraintPenaltyFactor" value="1500" min="100" max="10000">
-                                <div class="form-text">约束违反的惩罚强度</div>
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">并行工作线程</label>
-                                <input type="number" class="form-control" id="parallelWorkers" value="4" min="1" max="16">
-                                <div class="form-text">并行计算使用的线程数</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">多样性因子</label>
-                                <input type="number" class="form-control" id="diversityFactor" value="0.1" step="0.01" min="0" max="1">
-                                <div class="form-text">种群多样性维护强度</div>
-                            </div>
-                        </div>
-                        
-                        <hr>
-                        <h6 class="mb-3">特殊选项</h6>
-                        
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="adaptiveMutation" checked>
-                            <label class="form-check-label" for="adaptiveMutation">
-                                启用自适应变异
-                            </label>
-                            <div class="form-text">根据收敛情况动态调整变异率</div>
-                        </div>
-                        
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="parallelComputing" checked>
-                            <label class="form-check-label" for="parallelComputing">
-                                启用并行计算
-                            </label>
-                            <div class="form-text">使用多线程加速计算</div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-outline-primary" onclick="resetAlgorithmSettings()">恢复默认</button>
-                    <button type="button" class="btn btn-primary" onclick="saveAlgorithmSettings()">保存设置</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- JavaScript 库 -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/index.js') }}"></script>
 </body>

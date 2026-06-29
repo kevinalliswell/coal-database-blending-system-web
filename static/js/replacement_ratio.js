@@ -117,7 +117,6 @@ async function performCalculation() {
         });
         
     } catch (error) {
-        console.error('计算错误:', error);
         showAlert('计算过程中出现错误: ' + error.message, 'danger');
     } finally {
         // 恢复按钮状态
@@ -538,168 +537,6 @@ function generatePrintContent() {
     `;
 }
 
-// 添加到历史记录
-function addToHistory(result, calculationType) {
-    const historyItem = {
-        timestamp: new Date().toLocaleString(),
-        type: calculationType === 'theory' ? '理论置换比' : '实际置换比',
-        result: result.ratio.toFixed(6),
-        parameters: collectCurrentParameters(),
-        details: result.details
-    };
-    
-    calculationHistory.unshift(historyItem);
-    
-    // 限制历史记录数量
-    if (calculationHistory.length > 20) {
-        calculationHistory = calculationHistory.slice(0, 20);
-    }
-    
-    updateHistoryTable();
-    saveHistoryToLocalStorage();
-}
-
-// 收集当前参数
-function collectCurrentParameters() {
-    const selectedType = document.querySelector('input[name="calculationType"]:checked').value;
-    const params = {};
-    
-    if (selectedType === 'theory') {
-        params['煤粉含碳量'] = document.getElementById('coalCarbonContent').value + '%';
-        params['焦炭含碳量'] = document.getElementById('cokeCarbonContent').value + '%';
-        params['煤气利用率'] = document.getElementById('gasUtilization').value;
-    } else {
-        params['调整前焦比'] = document.getElementById('initialCokeRatio').value + ' kg/t';
-        params['调整后焦比'] = document.getElementById('finalCokeRatio').value + ' kg/t';
-        params['调整前煤比'] = document.getElementById('initialCoalRatio').value + ' kg/t';
-        params['调整后煤比'] = document.getElementById('finalCoalRatio').value + ' kg/t';
-    }
-    
-    return params;
-}
-
-// 更新历史记录表
-function updateHistoryTable() {
-    const tbody = document.querySelector('#historyTable tbody');
-    tbody.innerHTML = '';
-    
-    if (calculationHistory.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无计算历史</td></tr>';
-        return;
-    }
-    
-    calculationHistory.forEach((item, index) => {
-        const row = document.createElement('tr');
-        const parametersSummary = Object.entries(item.parameters)
-            .slice(0, 2)
-            .map(([key, value]) => `${key}: ${value}`)
-            .join(', ');
-        
-        row.innerHTML = `
-            <td>${item.timestamp}</td>
-            <td><span class="badge ${item.type === '理论置换比' ? 'bg-primary' : 'bg-success'}">${item.type}</span></td>
-            <td><strong>${item.result}</strong></td>
-            <td>${parametersSummary}</td>
-            <td>
-                <button class="btn btn-sm btn-outline-primary" onclick="viewHistoryDetail(${index})">
-                    <i class="bi bi-eye"></i> 查看
-                </button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteHistoryItem(${index})">
-                    <i class="bi bi-trash"></i> 删除
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-// 查看历史详情
-function viewHistoryDetail(index) {
-    const item = calculationHistory[index];
-    
-    // 创建模态框显示详细信息
-    const modalHtml = `
-        <div class="modal fade" id="historyDetailModal" tabindex="-1">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">计算历史详情 - ${item.type}</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <p><strong>计算时间:</strong> ${item.timestamp}</p>
-                        <p><strong>计算结果:</strong> ${item.result}</p>
-                        <h6>详细计算过程:</h6>
-                        <table class="table table-striped">
-                            <tbody>
-                                ${Object.entries(item.details).map(([key, value]) => 
-                                    `<tr><td><strong>${key}</strong></td><td>${formatValue(value)}</td></tr>`
-                                ).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-                        <button type="button" class="btn btn-primary" onclick="loadHistoryParameters(${index})">加载参数</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // 移除现有模态框并添加新的
-    const existingModal = document.getElementById('historyDetailModal');
-    if (existingModal) {
-        existingModal.remove();
-    }
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    const modal = new bootstrap.Modal(document.getElementById('historyDetailModal'));
-    modal.show();
-}
-
-// 加载历史参数
-function loadHistoryParameters(index) {
-    const item = calculationHistory[index];
-    
-    // 根据计算类型设置相应的参数
-    if (item.type === '理论置换比') {
-        document.getElementById('theoryCalculation').checked = true;
-        // 这里需要根据保存的参数来设置具体数值
-        // 由于历史记录中没有保存完整参数，这里只是示例
-    } else {
-        document.getElementById('actualCalculation').checked = true;
-        // 类似地设置实际计算参数
-    }
-    
-    updateCalculationSections();
-    showAlert('历史参数已加载', 'success');
-    
-    // 关闭模态框
-    const modal = bootstrap.Modal.getInstance(document.getElementById('historyDetailModal'));
-    modal.hide();
-}
-
-// 删除历史记录项
-function deleteHistoryItem(index) {
-    if (confirm('确定要删除这条历史记录吗？')) {
-        calculationHistory.splice(index, 1);
-        updateHistoryTable();
-        saveHistoryToLocalStorage();
-        showAlert('历史记录已删除', 'info');
-    }
-}
-
-// 清空历史记录
-function clearHistory() {
-    if (confirm('确定要清空所有历史记录吗？')) {
-        calculationHistory = [];
-        updateHistoryTable();
-        saveHistoryToLocalStorage();
-        showAlert('历史记录已清空', 'info');
-    }
-}
-
 // 本地存储相关函数
 function saveToLocalStorage() {
     const data = {};
@@ -732,24 +569,7 @@ function loadFromLocalStorage() {
                 }
             });
         } catch (error) {
-            console.error('加载本地存储数据失败:', error);
-        }
-    }
-}
-
-function saveHistoryToLocalStorage() {
-    localStorage.setItem('replacementRatioHistory', JSON.stringify(calculationHistory));
-}
-
-function loadCalculationHistory() {
-    const data = localStorage.getItem('replacementRatioHistory');
-    if (data) {
-        try {
-            calculationHistory = JSON.parse(data);
-            updateHistoryTable();
-        } catch (error) {
-            console.error('加载历史记录失败:', error);
-            calculationHistory = [];
+            showAlert('本地参数读取失败，已使用页面默认值', 'warning');
         }
     }
 }
@@ -763,20 +583,42 @@ function formatValue(value) {
 }
 
 function showAlert(message, type = 'info') {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    const container = getToastContainer();
+    const toast = document.createElement('div');
+    toast.className = 'toast coal-toast';
+    toast.role = 'alert';
+    toast.innerHTML = `
+        <div class="toast-header">
+            <i class="bi bi-info-circle text-${type} me-2"></i>
+            <strong class="me-auto">系统提示</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">${escapeHtml(message)}</div>
     `;
-    
-    document.body.insertAdjacentElement('afterbegin', alertDiv);
-    
-    setTimeout(() => {
-        if (alertDiv.parentNode) {
-            alertDiv.remove();
-        }
-    }, 5000);
+
+    container.appendChild(toast);
+    toast.addEventListener('hidden.bs.toast', () => toast.remove());
+    bootstrap.Toast.getOrCreateInstance(toast, { delay: type === 'danger' ? 5200 : 3200 }).show();
+}
+
+function getToastContainer() {
+    let container = document.getElementById('replacementRatioToastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'replacementRatioToastContainer';
+        container.className = 'toast-container position-fixed top-0 end-0 p-3';
+        document.body.appendChild(container);
+    }
+    return container;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 function downloadExcel(data, filename) {

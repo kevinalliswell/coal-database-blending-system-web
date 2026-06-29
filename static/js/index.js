@@ -1,117 +1,212 @@
-// 首页JavaScript文件
+// 首页真实运行态仪表盘
 
-// 页面加载完成后初始化
-document.addEventListener('DOMContentLoaded', function() {
-    initializeHomePage();
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('refreshDashboardBtn')?.addEventListener('click', refreshDashboard);
+    refreshDashboard();
 });
 
-// 初始化首页
-function initializeHomePage() {
-    loadSystemStatistics();
-    loadRecentActivities();
-}
+async function refreshDashboard() {
+    const refreshButton = document.getElementById('refreshDashboardBtn');
+    setButtonBusy(refreshButton, true);
 
-// 加载系统统计
-async function loadSystemStatistics() {
     try {
-        // 加载煤种总数
-        const response = await fetch('/api/coals?page_size=0');
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            document.getElementById('totalCoals').textContent = result.pagination.total;
-        }
-        
-        // 模拟其他统计数据
-        document.getElementById('totalOptimizations').textContent = '156';
-        document.getElementById('totalCalculations').textContent = '89';
-        document.getElementById('avgTime').textContent = '12.5';
-        
+        const [health, coals, blendingHistory, replacementHistory] = await Promise.all([
+            fetchJson('/health'),
+            fetchJson('/api/coals?page_size=0'),
+            fetchJson('/api/optimization/history'),
+            fetchJson('/api/replacement_ratio/history'),
+        ]);
+
+        const coalTotal = Number(coals?.pagination?.total ?? coals?.data?.length ?? health?.coal_count ?? 0);
+        const blendingItems = Array.isArray(blendingHistory?.data) ? blendingHistory.data : [];
+        const replacementItems = Array.isArray(replacementHistory?.data) ? replacementHistory.data : [];
+
+        renderHealth(health, coalTotal);
+        renderStats(coalTotal, blendingItems, replacementItems);
+        renderRecentActivities(blendingItems, replacementItems);
+        updateTextContent('lastRefreshChip', `已同步 ${formatTime(new Date())}`);
+        updateTextContent('runtimeSyncAt', formatTime(new Date()));
     } catch (error) {
-        console.error('加载统计数据失败:', error);
-        // 显示默认值
-        document.getElementById('totalCoals').textContent = '--';
-        document.getElementById('totalOptimizations').textContent = '--';
-        document.getElementById('totalCalculations').textContent = '--';
-        document.getElementById('avgTime').textContent = '--';
+        setHealthTone('danger', '连接异常');
+        renderRecentActivities([], [], error.message);
+        notify(error.message, 'danger');
+    } finally {
+        setButtonBusy(refreshButton, false);
     }
 }
 
-// 加载最近活动
-function loadRecentActivities() {
-    // 模拟最近活动数据
+async function fetchJson(url) {
+    const response = await fetch(url);
+    const payload = await response.json();
+    if (!response.ok || payload.status === 'error') {
+        throw new Error(payload.message || `${url} 请求失败`);
+    }
+    return payload;
+}
+
+function renderHealth(health, coalTotal) {
+    setHealthTone('success', '运行正常');
+    const storageMode = health?.storage_mode || 'sqlite';
+    updateTextContent('storageModeChip', storageMode.toUpperCase());
+    updateTextContent('runtimeApp', health?.app || '--');
+    updateTextContent('runtimeStorage', storageMode);
+    updateTextContent('runtimeCoalCount', coalTotal);
+}
+
+function renderStats(coalTotal, blendingItems, replacementItems) {
+    updateTextContent('totalCoals', coalTotal);
+    updateTextContent('totalOptimizations', blendingItems.length);
+    updateTextContent('totalCalculations', replacementItems.length);
+
+    const timeValues = blendingItems
+        .map(item => Number(item.time_taken))
+        .filter(value => Number.isFinite(value) && value >= 0);
+    const avgTime = timeValues.length > 0
+        ? timeValues.reduce((sum, value) => sum + value, 0) / timeValues.length
+        : null;
+    updateTextContent('avgTime', avgTime === null ? '--' : `${avgTime.toFixed(2)}s`);
+}
+
+function renderRecentActivities(blendingItems, replacementItems, errorMessage = '') {
+    const container = document.getElementById('recentActivities');
+    if (!container) {
+        return;
+    }
+
+    if (errorMessage) {
+        container.innerHTML = `<div class="alert alert-danger mb-0">${escapeHtml(errorMessage)}</div>`;
+        return;
+    }
+
     const activities = [
-        {
-            type: 'optimization',
-            title: '完成智能混煤优化',
-            description: '优化了3种煤的配比，获得最优方案',
-            time: '2小时前',
+        ...blendingItems.slice(0, 5).map(item => ({
+            kind: '混煤优化',
+            title: item.constraints_satisfied ? '生成可行混煤方案' : '生成需复核混煤方案',
+            description: buildBlendingDescription(item),
+            date: item.date || '',
+            href: `/optimization_history/blending`,
+            tone: item.constraints_satisfied ? 'success' : 'warning',
             icon: 'bi-cpu-fill',
-            color: 'text-success'
-        },
-        {
-            type: 'coal_add',
-            title: '添加新煤种',
-            description: '添加了"神华洗精煤"数据',
-            time: '4小时前',
-            icon: 'bi-plus-circle-fill',
-            color: 'text-primary'
-        },
-        {
-            type: 'calculation',
-            title: '置换比计算',
-            description: '计算了理论置换比87.5%',
-            time: '6小时前',
+        })),
+        ...replacementItems.slice(0, 5).map(item => ({
+            kind: '置换比计算',
+            title: renderReplacementMode(item),
+            description: `${item.parameter_summary || '参数摘要暂缺'}，结果 ${formatRatio(item.ratio_value)}`,
+            date: item.date || '',
+            href: `/optimization_history/replacement_ratio`,
+            tone: 'info',
             icon: 'bi-calculator-fill',
-            color: 'text-warning'
-        },
-        {
-            type: 'export',
-            title: '导出优化报告',
-            description: '导出了Excel格式的优化报告',
-            time: '1天前',
-            icon: 'bi-download',
-            color: 'text-info'
-        }
-    ];
-    
-    const activitiesContainer = document.getElementById('recentActivities');
-    activitiesContainer.innerHTML = '';
-    
-    activities.forEach(activity => {
-        const activityItem = document.createElement('div');
-        activityItem.className = 'list-group-item list-group-item-action';
-        activityItem.innerHTML = `
-            <div class="d-flex w-100 justify-content-between">
-                <div class="d-flex align-items-center">
-                    <i class="bi ${activity.icon} ${activity.color} me-3"></i>
-                    <div>
-                        <h6 class="mb-1">${activity.title}</h6>
-                        <p class="mb-0 text-muted small">${activity.description}</p>
-                    </div>
-                </div>
-                <small class="text-muted">${activity.time}</small>
+        })),
+    ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 6);
+
+    if (activities.length === 0) {
+        container.innerHTML = `
+            <div class="history-empty-state">
+                暂无历史活动。完成一次智能混煤或置换比计算后，这里会自动更新。
             </div>
         `;
-        activitiesContainer.appendChild(activityItem);
-    });
+        return;
+    }
+
+    container.innerHTML = activities.map(activity => `
+        <a class="home-activity-item" href="${activity.href}">
+            <span class="home-activity-item__icon" data-tone="${activity.tone}">
+                <i class="bi ${activity.icon}"></i>
+            </span>
+            <span class="home-activity-item__content">
+                <span class="home-activity-item__meta">${escapeHtml(activity.kind)} · ${escapeHtml(activity.date || '--')}</span>
+                <strong>${escapeHtml(activity.title)}</strong>
+                <span>${escapeHtml(activity.description)}</span>
+            </span>
+            <i class="bi bi-arrow-right-short home-activity-item__arrow"></i>
+        </a>
+    `).join('');
 }
 
-// 检查更新
-function checkForUpdates() {
-    // 模拟检查更新
-    const button = event.target;
-    const originalText = button.innerHTML;
-    
-    button.disabled = true;
-    button.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>检查中...';
-    
-    setTimeout(() => {
-        button.disabled = false;
-        button.innerHTML = originalText;
-        alert('系统已是最新版本！');
-    }, 2000);
+function buildBlendingDescription(item) {
+    const ratioItems = Array.isArray(item.ratio_items) ? item.ratio_items : [];
+    const coalSummary = ratioItems.slice(0, 2)
+        .map(ratio => `${ratio.coal_name} ${formatPercent(ratio.ratio_percent)}`)
+        .join('，');
+    const price = Number.isFinite(Number(item.total_price)) ? `总价 ¥${Number(item.total_price).toFixed(2)}` : '总价暂缺';
+    return coalSummary ? `${coalSummary}，${price}` : price;
 }
 
-// 定期刷新统计数据（每5分钟）
-setInterval(loadSystemStatistics, 5 * 60 * 1000); 
+function renderReplacementMode(item) {
+    if (item.calculation_type === 'theory') {
+        return '完成理论置换比计算';
+    }
+    if (item.calculation_mode === 'advanced') {
+        return '完成高级实际置换比计算';
+    }
+    return '完成基础实际置换比计算';
+}
+
+function setHealthTone(tone, text) {
+    const pill = document.getElementById('healthStatusPill');
+    if (!pill) {
+        return;
+    }
+    pill.dataset.tone = tone;
+    const icon = tone === 'success' ? 'bi-check-circle' : (tone === 'danger' ? 'bi-exclamation-triangle' : 'bi-activity');
+    pill.innerHTML = `<i class="bi ${icon} me-1"></i>${escapeHtml(text)}`;
+}
+
+function setButtonBusy(button, isBusy) {
+    if (!button) {
+        return;
+    }
+    button.disabled = isBusy;
+    button.innerHTML = isBusy
+        ? '<i class="bi bi-hourglass-split me-1"></i>同步中'
+        : '<i class="bi bi-arrow-repeat me-1"></i>刷新';
+}
+
+function notify(message, tone = 'info') {
+    const container = document.getElementById('homeToastContainer');
+    if (!container) {
+        return;
+    }
+    const toast = document.createElement('div');
+    toast.className = 'toast coal-toast';
+    toast.role = 'alert';
+    toast.innerHTML = `
+        <div class="toast-header">
+            <i class="bi bi-info-circle text-${tone} me-2"></i>
+            <strong class="me-auto">系统提示</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">${escapeHtml(message)}</div>
+    `;
+    container.appendChild(toast);
+    toast.addEventListener('hidden.bs.toast', () => toast.remove());
+    bootstrap.Toast.getOrCreateInstance(toast, { delay: 3600 }).show();
+}
+
+function updateTextContent(id, text) {
+    const element = document.getElementById(id);
+    if (element) {
+        element.textContent = text;
+    }
+}
+
+function formatRatio(value) {
+    return Number.isFinite(Number(value)) ? Number(value).toFixed(6) : '--';
+}
+
+function formatPercent(value) {
+    return Number.isFinite(Number(value)) ? `${Number(value).toFixed(2)}%` : '--';
+}
+
+function formatTime(date) {
+    return date.toLocaleTimeString('zh-CN', { hour12: false });
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}

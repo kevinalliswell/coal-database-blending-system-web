@@ -2249,8 +2249,6 @@ function updateTextContent(elementId, value) {
 }
 
 function showLoadingState(message, requestData = null) {
-    console.log('Loading:', message);
-
     if (!String(message || '').includes('优化')) {
         return;
     }
@@ -2271,7 +2269,6 @@ function showLoadingState(message, requestData = null) {
 }
 
 function hideLoadingState() {
-    console.log('Loading complete');
     clearInterval(optimizationProgressTimer);
     optimizationProgressTimer = null;
     optimizationProgressStartedAt = null;
@@ -2374,15 +2371,63 @@ function getOptimizationProgressState(elapsedSeconds, estimatedSeconds, selected
 }
 
 function showSuccessMessage(message) {
-    alert('成功: ' + message);
+    showSmartBlendingToast(message, 'success');
 }
 
 function showErrorMessage(message) {
-    alert('错误: ' + message);
+    showSmartBlendingToast(message, 'danger');
 }
 
 function showWarningMessage(message) {
-    alert('警告: ' + message);
+    showSmartBlendingToast(message, 'warning');
+}
+
+function showSmartBlendingToast(message, tone = 'info') {
+    if (!window.bootstrap || !bootstrap.Toast || typeof bootstrap.Toast.getOrCreateInstance !== 'function') {
+        const prefix = tone === 'success' ? '成功' : (tone === 'danger' ? '错误' : '警告');
+        if (typeof alert === 'function') {
+            alert(`${prefix}: ${message}`);
+        }
+        return;
+    }
+
+    let container = document.getElementById('smartBlendingToastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'smartBlendingToastContainer';
+        container.className = 'toast-container position-fixed top-0 end-0 p-3';
+        document.body.appendChild(container);
+    }
+
+    const iconMap = {
+        success: 'bi-check-circle',
+        danger: 'bi-exclamation-triangle',
+        warning: 'bi-exclamation-circle',
+        info: 'bi-info-circle',
+    };
+    const toast = document.createElement('div');
+    toast.className = 'toast coal-toast';
+    toast.role = 'alert';
+    toast.innerHTML = `
+        <div class="toast-header">
+            <i class="bi ${iconMap[tone] || iconMap.info} text-${tone} me-2"></i>
+            <strong class="me-auto">系统提示</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">${escapeHtml(message)}</div>
+    `;
+    container.appendChild(toast);
+    toast.addEventListener('hidden.bs.toast', () => toast.remove());
+    bootstrap.Toast.getOrCreateInstance(toast, { delay: tone === 'danger' ? 5200 : 3200 }).show();
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 function formatShareTimestamp(date = new Date()) {
