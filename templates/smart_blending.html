@@ -108,6 +108,19 @@
                             选择至少两种煤后即可直接开始优化
                         </div>
                     </div>
+                    <div class="optimization-progress d-none" id="optimizationProgressPanel" aria-live="polite">
+                        <div class="optimization-progress__top">
+                            <div class="optimization-progress__title">
+                                <i class="bi bi-hourglass-split me-2"></i>
+                                <span id="optimizationProgressTitle">计算准备中</span>
+                            </div>
+                            <div class="optimization-progress__meta" id="optimizationProgressMeta">预计等待几秒到几十秒</div>
+                        </div>
+                        <div class="progress optimization-progress__bar">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" id="optimizationProgressBar" role="progressbar" style="width: 8%"></div>
+                        </div>
+                        <div class="optimization-progress__hint" id="optimizationProgressHint">确认后系统会先校验约束，再执行混煤计算</div>
+                    </div>
                 </div>
             </div>
         </div>

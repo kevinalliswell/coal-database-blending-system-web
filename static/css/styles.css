@@ -897,6 +897,44 @@ body {
     background: linear-gradient(90deg, #1e40af, #0ea5e9);
 }
 
+.optimization-progress {
+    margin-top: 0.9rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid #dde7f3;
+}
+
+.optimization-progress__top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 0.55rem;
+}
+
+.optimization-progress__title {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.optimization-progress__meta,
+.optimization-progress__hint {
+    color: var(--text-muted);
+    font-size: 0.84rem;
+}
+
+.optimization-progress__bar {
+    height: 0.8rem;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.optimization-progress__bar .progress-bar {
+    transition: width 0.25s ease;
+}
+
 .algorithm-metrics-panel {
     padding: 0.95rem 1rem;
     border-radius: 0.95rem;

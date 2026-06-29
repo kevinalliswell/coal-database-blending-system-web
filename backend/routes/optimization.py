@@ -7,6 +7,7 @@ import math
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import Config
 from app.extensions import db
@@ -216,7 +217,14 @@ def run_optimization():
         payload = _build_api_result(coal_names, algorithm_result, time_taken)
 
         if payload['status'] == 'success':
-            _save_optimization_history(data, payload)
+            try:
+                _save_optimization_history(data, payload)
+                payload['history_saved'] = True
+            except SQLAlchemyError as exc:
+                db.session.rollback()
+                logger.warning('优化结果已生成，但保存历史记录失败: %s', exc)
+                payload['history_saved'] = False
+                payload['warning'] = '优化结果已生成，但历史记录保存失败，请初始化或迁移数据库后再试。'
 
         return jsonify(_sanitize_json_value(payload))
 
