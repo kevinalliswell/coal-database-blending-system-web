@@ -1646,6 +1646,93 @@ body {
     gap: 0.65rem;
 }
 
+.history-page {
+    display: grid;
+    gap: 1rem;
+}
+
+.history-stats-grid {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+}
+
+.history-data-card {
+    overflow: hidden;
+}
+
+.history-toolbar {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(170px, 0.34fr) auto;
+    gap: 0.85rem;
+    align-items: end;
+    padding: 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+    background: #f8fbff;
+}
+
+.history-toolbar .form-label {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+}
+
+.history-toolbar__actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.history-table-shell {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.85rem;
+    background: #ffffff;
+    overflow: auto;
+}
+
+.history-table {
+    min-width: 920px;
+    margin-bottom: 0;
+}
+
+.history-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #edf2f8;
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.history-table tbody td {
+    vertical-align: middle;
+}
+
+.history-time-cell {
+    white-space: nowrap;
+    color: #475569;
+    font-variant-numeric: tabular-nums;
+}
+
+.history-ratio-value {
+    color: var(--primary-deep);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.history-table-footer {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+}
+
+.modal-subtitle {
+    color: var(--text-muted);
+    font-size: 0.84rem;
+    margin-top: 0.15rem;
+}
+
 .replacement-ratio-page {
     display: grid;
     gap: 1rem;
@@ -1917,6 +2004,7 @@ body {
 
     .page-hero__stats,
     .coal-data-stats,
+    .history-stats-grid,
     .replacement-ratio-stats,
     .home-stat-grid,
     .home-action-grid,
@@ -1941,12 +2029,17 @@ body {
     .coal-toolbar,
     .coal-command-bar,
     .coal-detail-grid,
-    .coal-detail-metrics {
+    .coal-detail-metrics,
+    .history-toolbar {
         grid-template-columns: 1fr;
     }
 
     .coal-command-bar__actions {
         justify-content: flex-start;
+    }
+
+    .history-toolbar__actions .btn {
+        width: 100%;
     }
 }
 

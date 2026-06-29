@@ -67,11 +67,6 @@ class Config:
         """判断当前是否启用数据库模式。"""
         return cls.DATA_STORAGE_MODE in {"database", "sqlite"}
 
-    @classmethod
-    def is_csv_mode(cls) -> bool:
-        """判断当前是否启用 CSV 模式。"""
-        return cls.DATA_STORAGE_MODE == "csv"
-
 
 class DevelopmentConfig(Config):
     """开发环境配置。"""
