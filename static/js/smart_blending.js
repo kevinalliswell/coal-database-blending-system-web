@@ -1060,7 +1060,6 @@ async function startOptimization() {
 
         if (['success', 'no_feasible_solution', 'search_failed'].includes(result.status)) {
             displayOptimizationResults(result.status, result.result, result.message);
-            scrollToResultsSection();
 
             if (result.status === 'success') {
                 showSuccessMessage('喷煤性价比优化完成！');
@@ -1131,6 +1130,7 @@ function displayOptimizationResults(status, data, message) {
     const displayData = normalizeDisplayResult(data, data?.recommended_solution || null);
     latestDisplayedResult = displayData || null;
     lastOptimizationResult = displayData?.is_feasible ? displayData : null;
+    setResultsSectionVisible(Boolean(displayData));
 
     const ratios = [];
     const coalNames = Array.isArray(displayData?.coal_names) ? displayData.coal_names : [];
@@ -1963,7 +1963,6 @@ function updateQuickResultSummary(status = null, data = null, message = '') {
 
 function updateActionButtonsState() {
     const canStart = !optimizationInProgress && selectedCoals.size >= 2;
-    const canScrollToResults = Boolean(latestDisplayedResult);
     const canExport = Boolean(lastOptimizationResult) && !exportInProgress;
 
     document.querySelectorAll('.start-optimization-btn').forEach(button => {
@@ -1993,7 +1992,9 @@ function updateActionButtonsState() {
     ];
     scrollButtons.forEach(button => {
         if (button) {
-            button.disabled = !canScrollToResults;
+            button.disabled = optimizationInProgress;
+            button.classList.toggle('btn-outline-primary', Boolean(latestDisplayedResult));
+            button.classList.toggle('btn-outline-secondary', !latestDisplayedResult);
         }
     });
 
@@ -2022,6 +2023,7 @@ function invalidateOptimizationResults(statusMessage) {
 function clearOptimizationResults() {
     latestDisplayedResult = null;
     lastOptimizationResult = null;
+    setResultsSectionVisible(false);
     updateRatioTable([], null);
     resetPerformanceIndicators();
     resetAlgorithmInfo();
@@ -2139,9 +2141,22 @@ function syncWorkspaceStatus(tone, text, hint = '') {
     }
 }
 
-function scrollToResultsSection() {
+function setResultsSectionVisible(visible) {
     const section = document.getElementById('resultsSection');
     if (section) {
+        section.classList.toggle('d-none', !visible);
+    }
+}
+
+function scrollToResultsSection() {
+    const section = document.getElementById('resultsSection');
+    if (!latestDisplayedResult) {
+        syncWorkspaceStatus('warning', '尚未生成优化结果。', '请先选择至少两种煤并运行优化计算，再查看详细结果');
+        showWarningMessage('还没有可查看的优化结果，请先运行优化计算。');
+        return;
+    }
+    if (section) {
+        setResultsSectionVisible(true);
         section.scrollIntoView({
             behavior: 'smooth',
             block: 'start'

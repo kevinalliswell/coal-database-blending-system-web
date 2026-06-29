@@ -303,7 +303,7 @@
                                 <button type="button" class="btn btn-success btn-lg start-optimization-btn" data-action="start-optimization" data-open-reason="start">
                                     <i class="bi bi-play-circle me-2"></i>开始优化计算
                                 </button>
-                                <button type="button" class="btn btn-outline-primary" id="scrollToResultsBtn" disabled>
+                                <button type="button" class="btn btn-outline-primary" id="scrollToResultsBtn">
                                     <i class="bi bi-arrow-down-circle me-2"></i>查看详细结果
                                 </button>
                                 <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#algorithmSettingsModal">
@@ -316,7 +316,7 @@
             </div>
         </div>
 
-        <div class="row mb-4" id="resultsSection">
+        <div class="row mb-4 d-none" id="resultsSection">
             <div class="col-md-12">
                 <div class="card result-card">
                     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -542,7 +542,7 @@
             <button type="button" class="btn btn-success btn-sm start-optimization-btn" data-action="start-optimization" data-open-reason="start">
                 <i class="bi bi-play-circle me-1"></i>开始优化
             </button>
-            <button type="button" class="btn btn-outline-primary btn-sm" id="scrollToResultsBtnMobile" disabled>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="scrollToResultsBtnMobile">
                 <i class="bi bi-arrow-down-circle me-1"></i>查看结果
             </button>
         </div>

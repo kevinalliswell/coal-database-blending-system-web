@@ -11,7 +11,7 @@ const elements = new Map();
 const queryElements = new Map();
 
 function makeElement(id) {
-  return {
+  const element = {
     id,
     textContent: '',
     innerHTML: '',
@@ -28,13 +28,34 @@ function makeElement(id) {
     querySelector() { return null; },
     querySelectorAll() { return []; },
     scrollIntoView() {},
-    classList: {
-      add() {},
-      remove() {},
-      toggle() {},
-      contains() { return false; },
+  };
+  element.classList = {
+    add(...names) {
+      const classes = new Set(element.className.split(/\s+/).filter(Boolean));
+      names.forEach(name => classes.add(name));
+      element.className = Array.from(classes).join(' ');
+    },
+    remove(...names) {
+      const classes = new Set(element.className.split(/\s+/).filter(Boolean));
+      names.forEach(name => classes.delete(name));
+      element.className = Array.from(classes).join(' ');
+    },
+    toggle(name, force) {
+      const classes = new Set(element.className.split(/\s+/).filter(Boolean));
+      const shouldAdd = force === undefined ? !classes.has(name) : Boolean(force);
+      if (shouldAdd) {
+        classes.add(name);
+      } else {
+        classes.delete(name);
+      }
+      element.className = Array.from(classes).join(' ');
+      return shouldAdd;
+    },
+    contains(name) {
+      return element.className.split(/\s+/).filter(Boolean).includes(name);
     },
   };
+  return element;
 }
 
 function getQueryElement(selector) {
@@ -135,6 +156,27 @@ hideLoadingState();
     run_smart_blending_script(extra_script)
 
 
+def test_view_results_button_warns_until_result_exists():
+    extra_script = r"""
+let warningMessage = '';
+global.alert = function(message) { warningMessage = message; };
+document.getElementById('resultsSection').classList.add('d-none');
+
+scrollToResultsSection();
+
+if (!warningMessage) {
+  throw new Error('View results did not warn when no result exists');
+}
+if (document.getElementById('resultsSection').classList.contains('d-none') === false) {
+  throw new Error('Results section should stay hidden before optimization');
+}
+if (document.getElementById('workspaceStatusBar').attributes['data-tone'] !== 'warning') {
+  throw new Error('Workspace status was not updated to warning');
+}
+"""
+    run_smart_blending_script(extra_script)
+
+
 def test_pareto_solutions_render_and_can_be_selected():
     extra_script = r"""
 const data = {
@@ -198,6 +240,11 @@ const data = {
 };
 
 displayOptimizationResults('success', data, 'ok');
+document.getElementById('resultsSection').classList.add('d-none');
+displayOptimizationResults('success', data, 'ok');
+if (document.getElementById('resultsSection').classList.contains('d-none')) {
+  throw new Error('Results section stayed hidden after optimization result');
+}
 const paretoBody = document.querySelector('.pareto-solutions-table tbody');
 if (!paretoBody.innerHTML.includes('pareto_002')) {
   throw new Error('Pareto table did not render second solution');
