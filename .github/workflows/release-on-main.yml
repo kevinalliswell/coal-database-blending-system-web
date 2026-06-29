@@ -1,15 +1,15 @@
-name: Release On Main
+name: Release
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: write
+  id-token: write
 
 concurrency:
-  group: release-on-main
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -17,87 +17,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          fetch-tags: true
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Fetch latest tags
-        run: git fetch --force --tags origin
-
-      - name: Determine next release tag
-        id: version
-        shell: bash
-        run: |
-          head_tag="$(git tag --points-at HEAD --list 'v*' --sort=-version:refname | head -n 1)"
-          latest_tag="$(git tag --list 'v*' --sort=-version:refname | head -n 1)"
-
-          if [[ -n "$head_tag" ]]; then
-            previous_tag="$(git tag --list 'v*' --sort=-version:refname | grep -Fxv "$head_tag" | head -n 1 || true)"
-            next_tag="$head_tag"
-            tag_exists="true"
-          elif [[ -z "$latest_tag" ]]; then
-            previous_tag=""
-            next_tag="v0.1.0"
-            tag_exists="false"
-          elif [[ "$latest_tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            previous_tag="$latest_tag"
-            major="${BASH_REMATCH[1]}"
-            minor="${BASH_REMATCH[2]}"
-            patch="${BASH_REMATCH[3]}"
-            next_tag="v${major}.${minor}.$((patch + 1))"
-            tag_exists="false"
-          else
-            echo "Unsupported tag format: $latest_tag"
-            exit 1
-          fi
-
-          echo "previous_tag=$previous_tag" >> "$GITHUB_OUTPUT"
-          echo "next_tag=$next_tag" >> "$GITHUB_OUTPUT"
-          echo "tag_exists=$tag_exists" >> "$GITHUB_OUTPUT"
-
-      - name: Build changelog
-        env:
-          PREVIOUS_TAG: ${{ steps.version.outputs.previous_tag }}
-          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
-          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
-        shell: bash
-        run: |
-          release_date="$(date -u +'%Y-%m-%d %H:%M UTC')"
-          {
-            echo "# ${NEXT_TAG}"
-            echo
-            echo "- Release time: ${release_date}"
-            echo "- Source branch: main"
-            echo "- Commit: ${GITHUB_SHA}"
-            echo
-            echo "## Changelog"
-            echo
-
-            if [[ -n "${PREVIOUS_TAG}" ]]; then
-              git log "${PREVIOUS_TAG}..HEAD" --pretty=format:"- %s ([%h](${REPOSITORY_URL}/commit/%H))"
-            else
-              git log --pretty=format:"- %s ([%h](${REPOSITORY_URL}/commit/%H))"
-            fi
-          } > RELEASE_CHANGELOG.md
-
-      - name: Create and push tag
-        if: steps.version.outputs.tag_exists != 'true'
-        env:
-          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${NEXT_TAG}" -m "Release ${NEXT_TAG}"
-          git push origin "${NEXT_TAG}"
-
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/setup-python@v5
         with:
-          tag_name: ${{ steps.version.outputs.next_tag }}
-          name: Release ${{ steps.version.outputs.next_tag }}
-          body_path: RELEASE_CHANGELOG.md
-          draft: false
-          prerelease: false
+          python-version: "3.11"
+          cache: pip
+
+      - name: Python Semantic Release
+        id: release
+        uses: python-semantic-release/python-semantic-release@v9
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          git_committer_name: "github-actions[bot]"
+          git_committer_email: "41898282+github-actions[bot]@users.noreply.github.com"

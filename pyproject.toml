@@ -1,0 +1,19 @@
+[tool.semantic_release]
+version_variables = ["app/__version__.py:__version__"]
+major_on_zero = false
+commit_message = "chore(release): v{version} [skip ci]"
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.changelog]
+changelog_file = "CHANGELOG.md"
+exclude_commit_patterns = [
+    "^chore\\(release\\):",
+    "^Merge (pull request|branch)",
+]
+
+[tool.semantic_release.publish]
+upload_to_vcs_release = true
+dist_glob_patterns = []
