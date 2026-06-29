@@ -13,6 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
+    document.addEventListener('click', handlePageActionClick);
+
     document.getElementById('searchInput')?.addEventListener('input', debounce(searchCoals, 180));
     document.getElementById('searchInput')?.addEventListener('keydown', event => {
         if (event.key === 'Enter') {
@@ -37,6 +39,10 @@ function setupEventListeners() {
         displayCoals();
     });
 
+    document.getElementById('coalTableBody')?.addEventListener('change', handleCoalTableChange);
+    document.getElementById('coalTableBody')?.addEventListener('click', handleCoalTableClick);
+    document.getElementById('editFromDetailBtn')?.addEventListener('click', handleEditFromDetailClick);
+
     document.getElementById('addCoalModal')?.addEventListener('hidden.bs.modal', () => {
         document.getElementById('addCoalForm')?.reset();
     });
@@ -45,6 +51,67 @@ function setupEventListeners() {
         currentEditCoalId = null;
         document.getElementById('editCoalForm')?.reset();
     });
+}
+
+function handlePageActionClick(event) {
+    const button = event.target.closest('[data-action]');
+    if (!button) {
+        return;
+    }
+
+    const actions = {
+        search: searchCoals,
+        'reset-search': resetSearch,
+        refresh: loadCoals,
+        'export-selected': exportSelected,
+        'export-all': exportAll,
+        'batch-delete': batchDelete,
+        'save-coal': saveCoal,
+        'update-coal': updateCoal,
+        'download-template': downloadTemplate,
+        'upload-file': uploadFile,
+    };
+
+    const action = actions[button.dataset.action];
+    if (action) {
+        action();
+    }
+}
+
+function handleCoalTableChange(event) {
+    const checkbox = event.target.closest('[data-coal-select]');
+    if (!checkbox) {
+        return;
+    }
+
+    toggleCoalSelection(Number(checkbox.value), checkbox.checked);
+}
+
+function handleCoalTableClick(event) {
+    const button = event.target.closest('[data-row-action]');
+    if (!button) {
+        return;
+    }
+
+    const coalId = Number(button.dataset.coalId);
+    if (!Number.isFinite(coalId)) {
+        return;
+    }
+
+    if (button.dataset.rowAction === 'detail') {
+        viewCoalDetail(coalId);
+    } else if (button.dataset.rowAction === 'edit') {
+        editCoal(coalId);
+    } else if (button.dataset.rowAction === 'delete') {
+        deleteCoal(coalId);
+    }
+}
+
+function handleEditFromDetailClick(event) {
+    const coalId = Number(event.currentTarget.dataset.coalId);
+    if (Number.isFinite(coalId)) {
+        editCoalFromDetail(coalId);
+    }
 }
 
 async function loadCoals() {
@@ -127,7 +194,7 @@ function createCoalRow(coal) {
     row.innerHTML = `
         <td class="select-col">
             <input class="form-check-input" type="checkbox" value="${coalId}" ${selected ? 'checked' : ''}
-                   onchange="toggleCoalSelection(${coalId}, this.checked)" title="选择煤种">
+                   data-coal-select title="选择煤种">
         </td>
         <td class="text-muted">${coalId}</td>
         <td class="coal-name-cell">
@@ -148,13 +215,13 @@ function createCoalRow(coal) {
         <td class="metric-cell">${formatPercent(coal.total_sulfur)}</td>
         <td>
             <div class="coal-row-actions">
-                <button class="btn btn-sm detail-button" onclick="viewCoalDetail(${coalId})" title="查看详情">
+                <button class="btn btn-sm detail-button" type="button" data-row-action="detail" data-coal-id="${coalId}" title="查看详情">
                     <i class="bi bi-eye"></i>
                 </button>
-                <button class="btn btn-sm btn-outline-warning" onclick="editCoal(${coalId})" title="编辑">
+                <button class="btn btn-sm btn-outline-warning" type="button" data-row-action="edit" data-coal-id="${coalId}" title="编辑">
                     <i class="bi bi-pencil"></i>
                 </button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteCoal(${coalId})" title="删除">
+                <button class="btn btn-sm btn-outline-danger" type="button" data-row-action="delete" data-coal-id="${coalId}" title="删除">
                     <i class="bi bi-trash"></i>
                 </button>
             </div>
@@ -346,7 +413,7 @@ function viewCoalDetail(coalId) {
 
     const editButton = document.getElementById('editFromDetailBtn');
     if (editButton) {
-        editButton.onclick = () => editCoalFromDetail(coalId);
+        editButton.dataset.coalId = String(coalId);
     }
 
     bootstrap.Modal.getOrCreateInstance(document.getElementById('coalDetailModal')).show();
@@ -702,7 +769,8 @@ function confirmAction({ title, message, confirmText = '确认', tone = 'danger'
         const confirmBtn = document.getElementById('confirmActionBtn');
 
         if (!modalEl || !confirmBtn) {
-            resolve(window.confirm(message));
+            notify(message || '确认组件不可用，操作已取消', 'warning');
+            resolve(false);
             return;
         }
 
@@ -852,20 +920,3 @@ function showError(message) {
 function showWarning(message) {
     notify(message, 'warning');
 }
-
-window.loadCoals = loadCoals;
-window.searchCoals = searchCoals;
-window.resetSearch = resetSearch;
-window.changePage = changePage;
-window.toggleCoalSelection = toggleCoalSelection;
-window.viewCoalDetail = viewCoalDetail;
-window.editCoal = editCoal;
-window.editCoalFromDetail = editCoalFromDetail;
-window.deleteCoal = deleteCoal;
-window.saveCoal = saveCoal;
-window.updateCoal = updateCoal;
-window.batchDelete = batchDelete;
-window.exportSelected = exportSelected;
-window.exportAll = exportAll;
-window.downloadTemplate = downloadTemplate;
-window.uploadFile = uploadFile;

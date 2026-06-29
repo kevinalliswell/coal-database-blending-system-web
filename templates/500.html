@@ -17,7 +17,7 @@
             <h1>服务器暂时无法完成请求</h1>
             <p>服务端处理时遇到错误。可以刷新重试，或回到首页检查当前服务状态。</p>
             <div class="error-panel__actions">
-                <button type="button" class="btn btn-primary" onclick="window.location.reload()">
+                <button type="button" class="btn btn-primary" id="reloadPageBtn">
                     <i class="bi bi-arrow-clockwise me-1"></i>刷新页面
                 </button>
                 <a href="{{ url_for('pages.index') }}" class="btn btn-outline-secondary">
@@ -26,5 +26,10 @@
             </div>
         </section>
     </main>
+    <script>
+        document.getElementById('reloadPageBtn')?.addEventListener('click', function () {
+            window.location.reload();
+        });
+    </script>
 </body>
 </html>

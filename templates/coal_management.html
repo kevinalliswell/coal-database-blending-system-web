@@ -105,13 +105,13 @@
                     </select>
                 </div>
                 <div class="coal-toolbar__actions">
-                    <button class="btn btn-outline-primary" type="button" onclick="searchCoals()" title="搜索">
+                    <button class="btn btn-outline-primary" type="button" data-action="search" title="搜索">
                         <i class="bi bi-search"></i>
                     </button>
-                    <button class="btn btn-outline-secondary" type="button" onclick="resetSearch()" title="重置筛选">
+                    <button class="btn btn-outline-secondary" type="button" data-action="reset-search" title="重置筛选">
                         <i class="bi bi-arrow-clockwise"></i>
                     </button>
-                    <button class="btn btn-outline-secondary" type="button" onclick="loadCoals()" title="刷新数据">
+                    <button class="btn btn-outline-secondary" type="button" data-action="refresh" title="刷新数据">
                         <i class="bi bi-arrow-repeat"></i>
                     </button>
                 </div>
@@ -129,13 +129,13 @@
                     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#batchImportModal">
                         <i class="bi bi-upload me-1"></i>批量导入
                     </button>
-                    <button class="btn btn-outline-primary" onclick="exportSelected()">
+                    <button class="btn btn-outline-primary" type="button" data-action="export-selected">
                         <i class="bi bi-download me-1"></i>导出选中
                     </button>
-                    <button class="btn btn-outline-secondary" onclick="exportAll()">
+                    <button class="btn btn-outline-secondary" type="button" data-action="export-all">
                         <i class="bi bi-box-arrow-down me-1"></i>导出全部
                     </button>
-                    <button class="btn btn-outline-danger" onclick="batchDelete()">
+                    <button class="btn btn-outline-danger" type="button" data-action="batch-delete">
                         <i class="bi bi-trash me-1"></i>批量删除
                     </button>
                 </div>
@@ -197,7 +197,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-primary" onclick="saveCoal()">
+                    <button type="button" class="btn btn-primary" data-action="save-coal">
                         <i class="bi bi-save me-1"></i>保存煤种
                     </button>
                 </div>
@@ -220,7 +220,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-primary" onclick="updateCoal()">
+                    <button type="button" class="btn btn-primary" data-action="update-coal">
                         <i class="bi bi-save me-1"></i>保存修改
                     </button>
                 </div>
@@ -245,7 +245,7 @@
                         </div>
                     </div>
                     <div class="d-flex flex-wrap gap-2 mt-3">
-                        <button class="btn btn-outline-primary" onclick="downloadTemplate()">
+                        <button class="btn btn-outline-primary" type="button" data-action="download-template">
                             <i class="bi bi-download me-1"></i>下载导入模板
                         </button>
                     </div>
@@ -259,7 +259,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-primary" onclick="uploadFile()" id="uploadBtn">
+                    <button type="button" class="btn btn-primary" data-action="upload-file" id="uploadBtn">
                         <i class="bi bi-upload me-1"></i>开始导入
                     </button>
                 </div>

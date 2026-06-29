@@ -394,6 +394,8 @@ function setupBlendingEventListeners() {
 
     document.getElementById('coalSearchBtn')?.addEventListener('click', searchCoalsForBlending);
     document.getElementById('coalRefreshBtn')?.addEventListener('click', refreshCoalList);
+    document.getElementById('coalSelectionTableBody')?.addEventListener('change', handleCoalSelectionTableChange);
+    document.getElementById('coalSelectionTableBody')?.addEventListener('click', handleCoalSelectionTableClick);
 
     document.getElementById('coalPageSize')?.addEventListener('change', function() {
         coalPageSize = parseInt(this.value, 10) || 10;
@@ -525,15 +527,15 @@ function createCoalSelectionRow(coal) {
     row.innerHTML = `
         <td>
             <input class="form-check-input" type="checkbox" value="${coal.id}"
-                   ${isSelected ? 'checked' : ''} onchange="toggleCoalSelection(${coal.id})">
+                   ${isSelected ? 'checked' : ''} data-coal-select>
         </td>
         <td class="coal-name-cell">
             <div class="coal-name-main">
-                <span class="coal-name-text">${coal.name}</span>
+                <span class="coal-name-text">${escapeHtml(coal.name)}</span>
                 ${isSelected ? '<span class="coal-selected-flag"><i class="bi bi-check-circle-fill"></i>已选</span>' : ''}
             </div>
             <div class="coal-name-submeta">
-                <span class="badge bg-secondary">${coal.type}</span>
+                <span class="badge bg-secondary">${escapeHtml(coal.type)}</span>
                 <span>ID ${coal.id}</span>
             </div>
         </td>
@@ -547,21 +549,21 @@ function createCoalSelectionRow(coal) {
                 <div class="input-group input-group-sm ratio-input-group">
                     <span class="input-group-text ratio-constraint-label">下限</span>
                     <input type="number" class="form-control ratio-min ratio-constraint-input" value="${ratioConstraint.min}"
-                           min="0" max="100" step="0.1" data-coal-id="${coal.id}" placeholder="${ratioConstraint.min}"
-                           onchange="handleRatioConstraintInput(${coal.id}, 'min', this.value)" title="配比下限 (%)">
+                           min="0" max="100" step="0.1" data-coal-id="${coal.id}" data-ratio-field="min" placeholder="${ratioConstraint.min}"
+                           title="配比下限 (%)">
                     <span class="input-group-text">%</span>
                 </div>
                 <div class="input-group input-group-sm ratio-input-group">
                     <span class="input-group-text ratio-constraint-label">上限</span>
                     <input type="number" class="form-control ratio-max ratio-constraint-input" value="${ratioConstraint.max}"
-                           min="0" max="100" step="0.1" data-coal-id="${coal.id}" placeholder="${ratioConstraint.max}"
-                           onchange="handleRatioConstraintInput(${coal.id}, 'max', this.value)" title="配比上限 (%)">
+                           min="0" max="100" step="0.1" data-coal-id="${coal.id}" data-ratio-field="max" placeholder="${ratioConstraint.max}"
+                           title="配比上限 (%)">
                     <span class="input-group-text">%</span>
                 </div>
             </div>
         </td>
         <td>
-            <button class="btn btn-sm detail-button" onclick="viewCoalDetailForBlending(${coal.id})" title="查看详情">
+            <button class="btn btn-sm detail-button" type="button" data-row-action="detail" data-coal-id="${coal.id}" title="查看详情">
                 <i class="bi bi-eye"></i>
             </button>
         </td>
@@ -569,6 +571,28 @@ function createCoalSelectionRow(coal) {
 
     applyRatioValidationClasses(Number(coal.id), true);
     return row;
+}
+
+function handleCoalSelectionTableChange(event) {
+    const checkbox = event.target.closest('[data-coal-select]');
+    if (checkbox) {
+        toggleCoalSelection(Number(checkbox.value));
+        return;
+    }
+
+    const ratioInput = event.target.closest('[data-ratio-field]');
+    if (ratioInput) {
+        handleRatioConstraintInput(Number(ratioInput.dataset.coalId), ratioInput.dataset.ratioField, ratioInput.value);
+    }
+}
+
+function handleCoalSelectionTableClick(event) {
+    const button = event.target.closest('[data-row-action="detail"]');
+    if (!button) {
+        return;
+    }
+
+    viewCoalDetailForBlending(Number(button.dataset.coalId));
 }
 
 function getRatioConstraintForCoal(coalId) {
@@ -2385,9 +2409,7 @@ function showWarningMessage(message) {
 function showSmartBlendingToast(message, tone = 'info') {
     if (!window.bootstrap || !bootstrap.Toast || typeof bootstrap.Toast.getOrCreateInstance !== 'function') {
         const prefix = tone === 'success' ? '成功' : (tone === 'danger' ? '错误' : '警告');
-        if (typeof alert === 'function') {
-            alert(`${prefix}: ${message}`);
-        }
+        console[tone === 'danger' ? 'error' : tone === 'warning' ? 'warn' : 'info'](`${prefix}: ${message}`);
         return;
     }
 
