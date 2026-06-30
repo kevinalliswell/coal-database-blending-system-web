@@ -178,6 +178,67 @@ if (document.getElementById('workspaceStatusBar').attributes['data-tone'] !== 'w
     run_smart_blending_script(extra_script)
 
 
+def test_smart_blending_template_keeps_advanced_settings_collapsed():
+    template = Path("templates/smart_blending.html").read_text(encoding="utf-8")
+
+    assert 'id="advancedSolverPanel" class="accordion-collapse collapse"' in template
+    assert 'id="algorithmAdvancedPanel" class="accordion-collapse collapse"' in template
+    assert 'class="modal-body constraint-check-body"' in template
+
+
+def test_result_display_marks_results_as_expanded_and_updates_flow_state():
+    extra_script = r"""
+const data = {
+  objective_type: 'pci_pareto_nsga2_v1',
+  optimization_target: '多目标Pareto最优',
+  is_feasible: true,
+  constraints_satisfied: true,
+  coal_names: ['经济煤', '高热值煤'],
+  optimal_ratios: [0.45, 0.55],
+  blending_ratio: {'经济煤': 0.45, '高热值煤': 0.55},
+  total_price: 610,
+  total_heat: 6650,
+  total_ash: 9.8,
+  total_volatile: 22,
+  total_fixed_carbon: 66,
+  total_sulfur: 0.45,
+  iterations: 40,
+  time_taken: 0.4,
+  fitness_value: 0.12,
+  active_constraints: [],
+  constraint_violations: [],
+  diagnosis: [],
+  recommended_solution: {
+    solution_id: 'pareto_001',
+    optimal_ratios: [0.45, 0.55],
+    total_price: 610,
+    total_heat: 6650,
+    total_ash: 9.8,
+    total_volatile: 22,
+    total_fixed_carbon: 66,
+    total_sulfur: 0.45,
+    quality_penalty: 0.12
+  },
+  pareto_solutions: []
+};
+
+const section = document.getElementById('resultsSection');
+section.classList.add('d-none');
+displayOptimizationResults('success', data, 'ok');
+
+if (section.classList.contains('d-none')) {
+  throw new Error('Results section stayed hidden after result display');
+}
+if (!section.classList.contains('is-expanded')) {
+  throw new Error('Results section was not marked as expanded');
+}
+if (!document.getElementById('flowResultState').textContent.includes('计算完成')) {
+  throw new Error('Workflow result state was not updated after optimization');
+}
+"""
+    run_smart_blending_script(extra_script)
+
+
 def test_pareto_solutions_render_and_can_be_selected():
     extra_script = r"""
 const data = {

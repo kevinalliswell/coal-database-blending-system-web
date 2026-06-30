@@ -47,43 +47,44 @@
     </nav>
 
     <div class="container my-4">
-        <div class="row mb-4">
+        <div class="row mb-3">
             <div class="col-md-12">
-                <div class="page-hero card">
-                    <div class="page-hero__body">
+                <div class="page-hero smart-blending-hero card">
+                    <div class="page-hero__body smart-blending-hero__body">
                         <div class="page-hero__content">
                             <div class="page-hero__eyebrow">PCI Blending Console</div>
                             <h1 class="page-hero__title">智能混煤优化工作台</h1>
-                            <p class="page-hero__subtitle mb-0">在工艺约束内生成多目标 Pareto 候选方案，先看推荐解，再比较取舍。</p>
-                            <div class="page-hero__chips">
-                                <span class="hero-chip"><i class="bi bi-lightning-charge me-1"></i>结论优先</span>
-                                <span class="hero-chip"><i class="bi bi-sliders me-1"></i>工艺约束先校验</span>
-                                <span class="hero-chip"><i class="bi bi-diagram-3 me-1"></i>保留完整下钻明细</span>
-                            </div>
-                            <div class="page-hero__stats">
-                                <div class="hero-stat">
+                            <p class="page-hero__subtitle mb-0">先选煤，再确认核心约束，计算完成后自动展开推荐方案和诊断。</p>
+                            <div class="hero-compact-grid" aria-label="当前智能混煤状态">
+                                <div class="hero-stat hero-stat--compact">
                                     <span class="hero-stat__label">已选煤种</span>
                                     <strong class="hero-stat__value"><span id="heroSelectedCount">0</span> 种</strong>
                                     <span class="hero-stat__hint" id="heroSelectedHint">至少选择 2 种煤后即可开始优化</span>
                                 </div>
-                                <div class="hero-stat">
-                                    <span class="hero-stat__label">约束策略</span>
-                                    <strong class="hero-stat__value">标准工艺窗口</strong>
-                                    <span class="hero-stat__hint">热值、灰分、挥发分、固定碳、硫分与价格统一校验</span>
+                                <div class="hero-stat hero-stat--compact">
+                                    <span class="hero-stat__label">当前目标</span>
+                                    <strong class="hero-stat__value">多目标 Pareto 最优</strong>
+                                    <span class="hero-stat__hint">成本、热值与质量风险并行权衡</span>
                                 </div>
-                                <div class="hero-stat">
+                                <div class="hero-stat hero-stat--compact">
                                     <span class="hero-stat__label">当前结论</span>
                                     <strong class="hero-stat__value" id="heroResultHeadline">等待优化结论</strong>
                                     <span class="hero-stat__hint" id="heroResultHint">右侧决策面板会优先显示可行性、成本与关键诊断</span>
                                 </div>
                             </div>
                         </div>
-                        <div class="page-hero__meta">
-                            <span class="page-hero__meta-label">当前模式</span>
-                            <strong>多目标 Pareto 最优</strong>
-                            <div class="page-hero__meta-divider"></div>
+                        <div class="hero-command-panel">
                             <span class="page-hero__meta-label">工作状态</span>
                             <div class="hero-status-pill" id="heroStatusPill" data-tone="info">待选择煤种</div>
+                            <button type="button" class="btn btn-success start-optimization-btn" data-action="start-optimization" data-open-reason="start">
+                                <i class="bi bi-play-circle me-2"></i>开始优化计算
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary open-constraint-settings-btn" data-open-reason="edit">
+                                <i class="bi bi-sliders me-2"></i>检查约束
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" data-action="scroll-results">
+                                <i class="bi bi-arrow-down-circle me-2"></i>查看结果
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -115,6 +116,30 @@
                         </div>
                         <div class="optimization-progress__hint" id="optimizationProgressHint">确认后系统会先校验约束，再执行混煤计算</div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="workflow-strip mb-4" aria-label="智能混煤工作流">
+            <div class="workflow-step is-active">
+                <span class="workflow-step__index">1</span>
+                <div>
+                    <strong>选择煤种</strong>
+                    <span>已选 <span id="flowSelectedCount">0</span> 种，表格内可调整单煤配比</span>
+                </div>
+            </div>
+            <div class="workflow-step">
+                <span class="workflow-step__index">2</span>
+                <div>
+                    <strong>确认约束</strong>
+                    <span>核心工艺窗口默认可见，高级参数按需展开</span>
+                </div>
+            </div>
+            <div class="workflow-step">
+                <span class="workflow-step__index">3</span>
+                <div>
+                    <strong>查看结果</strong>
+                    <span id="flowResultState">计算完成后自动展开推荐方案</span>
                 </div>
             </div>
         </div>
@@ -218,9 +243,59 @@
 
             <div class="col-xl-5">
                 <div class="blending-sticky-column">
+                    <div class="card constraint-card constraint-control-card mb-3">
+                        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <span><i class="bi bi-sliders me-2"></i>约束设置</span>
+                            <span class="badge bg-light text-dark">默认参数已加载</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="constraint-control-card__header">
+                                <div>
+                                    <div class="summary-label">当前工艺窗口</div>
+                                    <div class="constraint-quick-summary" id="constraintQuickSummary">
+                                        <div class="summary-chip">热值 6000 - 7800</div>
+                                        <div class="summary-chip">灰分 0 - 20</div>
+                                        <div class="summary-chip">硫分 0 - 1.2</div>
+                                        <div class="summary-chip">价格 0 - 1500</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="constraint-control-grid">
+                                <div class="constraint-control-tile">
+                                    <span>已选煤种</span>
+                                    <strong><span id="sidebarSelectedCount">0</span> 种</strong>
+                                    <button class="btn btn-sm btn-link px-0" type="button" data-bs-toggle="collapse" data-bs-target="#selectedCoalSummaryCollapse" aria-expanded="false">
+                                        展开名单
+                                    </button>
+                                </div>
+                                <div class="constraint-control-tile">
+                                    <span>优化目标</span>
+                                    <strong id="sidebarResultObjective">多目标 Pareto 最优</strong>
+                                    <small>NSGA-II 推荐解</small>
+                                </div>
+                            </div>
+
+                            <div class="collapse" id="selectedCoalSummaryCollapse">
+                                <div class="selected-coal-preview selected-coal-preview--panel" id="selectedCoalPreview">
+                                    <span class="text-muted small">尚未选择煤种</span>
+                                </div>
+                            </div>
+
+                            <div class="constraint-control-actions">
+                                <button type="button" class="btn btn-outline-secondary open-constraint-settings-btn" data-open-reason="edit">
+                                    <i class="bi bi-sliders me-2"></i>编辑约束与求解设置
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#algorithmSettingsModal">
+                                    <i class="bi bi-sliders2 me-2"></i>高级算法参数
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="card result-card sidebar-summary-card mb-4">
                         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                            <span><i class="bi bi-lightning-charge me-2"></i>决策面板</span>
+                            <span><i class="bi bi-lightning-charge me-2"></i>结果与决策</span>
                             <span class="decision-badge" id="sidebarResultBadge" data-tone="pending">待计算</span>
                         </div>
                         <div class="card-body">
@@ -239,45 +314,9 @@
                                 </div>
                             </div>
 
-                            <div class="sidebar-summary-grid">
-                                <div class="sidebar-summary-block">
-                                    <div class="summary-label">已选煤种</div>
-                                    <div class="summary-value">
-                                        <span id="sidebarSelectedCount">0</span> 种
-                                    </div>
-                                    <div class="selected-coal-preview" id="selectedCoalPreview">
-                                        <span class="text-muted small">尚未选择煤种</span>
-                                    </div>
-                                </div>
-
-                                <div class="sidebar-summary-block">
-                                    <div class="summary-label">当前约束摘要</div>
-                                    <div class="constraint-quick-summary" id="constraintQuickSummary">
-                                        <div class="summary-chip">热值 6000 - 7800</div>
-                                        <div class="summary-chip">灰分 0 - 20</div>
-                                        <div class="summary-chip">硫分 0 - 1.2</div>
-                                        <div class="summary-chip">价格 0 - 1500</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="sidebar-summary-block sidebar-summary-block--action">
-                                <div class="summary-label">约束与求解设置</div>
-                                <div class="constraint-edit-summary">
-                                    当前约束与优化目标已改为启动前模态确认，右侧保留摘要，完整设置在计算前统一调整。
-                                </div>
-                                <button type="button" class="btn btn-outline-secondary w-100 open-constraint-settings-btn" data-open-reason="edit">
-                                    <i class="bi bi-sliders me-2"></i>编辑约束与求解设置
-                                </button>
-                            </div>
-
                             <div class="sidebar-summary-block sidebar-summary-block--highlight">
                                 <div class="summary-label">关键指标</div>
                                 <div class="quick-result-metrics">
-                                    <div class="metric-item">
-                                        <span class="metric-label">目标</span>
-                                        <span class="metric-value" id="sidebarResultObjective">多目标 Pareto 最优</span>
-                                    </div>
                                     <div class="metric-item">
                                         <span class="metric-label">吨煤成本</span>
                                         <span class="metric-value" id="sidebarResultPrice">--</span>
@@ -297,11 +336,8 @@
                                 <button type="button" class="btn btn-success btn-lg start-optimization-btn" data-action="start-optimization" data-open-reason="start">
                                     <i class="bi bi-play-circle me-2"></i>开始优化计算
                                 </button>
-                                <button type="button" class="btn btn-outline-primary" id="scrollToResultsBtn">
+                                <button type="button" class="btn btn-outline-primary" id="scrollToResultsBtn" data-action="scroll-results">
                                     <i class="bi bi-arrow-down-circle me-2"></i>查看详细结果
-                                </button>
-                                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#algorithmSettingsModal">
-                                    <i class="bi bi-sliders2 me-2"></i>查看算法设置
                                 </button>
                             </div>
                         </div>
@@ -310,13 +346,15 @@
             </div>
         </div>
 
+        <div class="results-anchor" id="resultsSectionAnchor"></div>
+
         <div class="row mb-4 d-none" id="resultsSection">
             <div class="col-md-12">
                 <div class="card result-card">
                     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div>
                             <div class="results-header-title"><i class="bi bi-bar-chart-line me-2"></i>推荐方案详情</div>
-                            <div class="results-header-subtitle">右侧先看结论，这里展开查看配比、指标和约束诊断明细。</div>
+                            <div class="results-header-subtitle">计算完成后自动展开，先看推荐解，再深入比较候选方案。</div>
                         </div>
                         <div class="d-flex align-items-center gap-2 flex-wrap">
                             <button class="btn btn-sm btn-outline-light" id="backToWorkspaceBtn">
@@ -552,7 +590,7 @@
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body constraint-check-body">
                     <div class="constraint-settings-modal__summary">
                         <div class="constraint-settings-summary-card">
                             <span class="constraint-settings-summary-card__label">已选煤种</span>
@@ -574,14 +612,14 @@
                         </div>
                     </div>
 
-                    <div class="constraint-stage-card">
+                    <div class="constraint-stage-card constraint-stage-card--compact">
                         <div class="constraint-stage-card__header">
                             <span class="constraint-stage-card__eyebrow">第一层</span>
                             <h6 class="mb-1">核心工艺约束</h6>
                             <p class="mb-0">先锁定生产边界，再在可行域内搜索成本最优解。</p>
                         </div>
-                        <div class="row g-3">
-                            <div class="col-md-6">
+                        <div class="constraint-core-grid">
+                            <div class="constraint-field-card">
                                 <h6 class="mb-3">热值约束 (kcal/kg)</h6>
                                 <div class="input-group mb-2">
                                     <span class="input-group-text">目标值</span>
@@ -597,7 +635,7 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-6">
+                            <div class="constraint-field-card">
                                 <h6 class="mb-3">灰分约束 (%)</h6>
                                 <div class="input-group mb-2">
                                     <span class="input-group-text">下限</span>
@@ -609,7 +647,7 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-6">
+                            <div class="constraint-field-card">
                                 <h6 class="mb-3">挥发分约束 (%)</h6>
                                 <div class="input-group mb-2">
                                     <span class="input-group-text">下限</span>
@@ -621,7 +659,7 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-6">
+                            <div class="constraint-field-card">
                                 <h6 class="mb-3">固定碳约束 (%)</h6>
                                 <div class="input-group mb-2">
                                     <span class="input-group-text">下限</span>
@@ -633,7 +671,7 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-6">
+                            <div class="constraint-field-card">
                                 <h6 class="mb-3">硫含量约束 (%)</h6>
                                 <div class="input-group mb-2">
                                     <span class="input-group-text">下限</span>
@@ -645,7 +683,7 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-6">
+                            <div class="constraint-field-card">
                                 <h6 class="mb-3">价格约束 (元/吨)</h6>
                                 <div class="input-group mb-2">
                                     <span class="input-group-text">下限</span>
@@ -659,9 +697,7 @@
                         </div>
                     </div>
 
-                    <hr>
-
-                    <div class="constraint-stage-card">
+                    <div class="constraint-stage-card constraint-stage-card--compact mt-3">
                         <div class="constraint-stage-card__header">
                             <span class="constraint-stage-card__eyebrow">第二层</span>
                             <h6 class="mb-1">全局配比约束</h6>
@@ -691,27 +727,31 @@
                         </div>
                     </div>
 
-                    <hr>
-
-                    <div class="constraint-stage-card">
-                        <div class="constraint-stage-card__header">
-                            <span class="constraint-stage-card__eyebrow">第三层</span>
-                            <h6 class="mb-1">优化目标与算法入口</h6>
-                            <p class="mb-0">使用 NSGA-II 生成成本、热值与质量风险之间的 Pareto 候选方案。</p>
-                        </div>
-                        <div class="constraint-stage-grid">
-                            <div>
-                                <label class="form-label fw-bold">优化目标</label>
-                                <select class="form-select" id="optimizationTarget">
-                                    <option value="喷煤性价比最优" selected>多目标 Pareto 最优（NSGA-II）</option>
-                                </select>
-                            </div>
-                            <div class="algorithm-entry-card">
-                                <div class="algorithm-entry-card__title">算法入口</div>
-                                <p class="mb-3">遗传算法参数用于控制 NSGA-II 种群规模、迭代次数、交叉和变异强度。</p>
-                                <button type="button" class="btn btn-outline-secondary w-100" data-bs-toggle="modal" data-bs-target="#algorithmSettingsModal">
-                                    <i class="bi bi-sliders2 me-2"></i>打开算法设置
+                    <div class="accordion constraint-advanced-accordion mt-3" id="constraintAdvancedAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="advancedSolverHeading">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#advancedSolverPanel" aria-expanded="false" aria-controls="advancedSolverPanel">
+                                    <i class="bi bi-sliders2 me-2"></i>优化目标与高级求解参数
                                 </button>
+                            </h2>
+                            <div id="advancedSolverPanel" class="accordion-collapse collapse" aria-labelledby="advancedSolverHeading" data-bs-parent="#constraintAdvancedAccordion">
+                                <div class="accordion-body">
+                                    <div class="constraint-stage-grid">
+                                        <div>
+                                            <label class="form-label fw-bold">优化目标</label>
+                                            <select class="form-select" id="optimizationTarget">
+                                                <option value="喷煤性价比最优" selected>多目标 Pareto 最优（NSGA-II）</option>
+                                            </select>
+                                        </div>
+                                        <div class="algorithm-entry-card">
+                                            <div class="algorithm-entry-card__title">算法入口</div>
+                                            <p class="mb-3">默认使用推荐参数；需要控制种群规模、迭代次数、交叉和变异强度时再展开调整。</p>
+                                            <button type="button" class="btn btn-outline-secondary w-100" data-bs-toggle="modal" data-bs-target="#algorithmSettingsModal">
+                                                <i class="bi bi-sliders2 me-2"></i>打开算法设置
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -780,65 +820,72 @@
                             </div>
                         </div>
 
-                        <hr>
-                        <h6 class="mb-3">高级参数</h6>
+                        <div class="accordion algorithm-advanced-accordion" id="algorithmAdvancedAccordion">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="algorithmAdvancedHeading">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#algorithmAdvancedPanel" aria-expanded="false" aria-controls="algorithmAdvancedPanel">
+                                        <i class="bi bi-sliders2 me-2"></i>高级参数与特殊选项
+                                    </button>
+                                </h2>
+                                <div id="algorithmAdvancedPanel" class="accordion-collapse collapse" aria-labelledby="algorithmAdvancedHeading" data-bs-parent="#algorithmAdvancedAccordion">
+                                    <div class="accordion-body">
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">锦标赛大小</label>
+                                                <input type="number" class="form-control algorithm-setting-input" id="tournamentSize" value="7" min="2" max="20">
+                                                <div class="form-text">选择父代个体时的锦标赛规模</div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">精英比例</label>
+                                                <input type="number" class="form-control algorithm-setting-input" id="eliteRatio" value="0.1" step="0.01" min="0" max="0.5">
+                                                <div class="form-text">直接进入下一代的最优个体比例</div>
+                                            </div>
+                                        </div>
 
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">锦标赛大小</label>
-                                <input type="number" class="form-control algorithm-setting-input" id="tournamentSize" value="7" min="2" max="20">
-                                <div class="form-text">选择父代个体时的锦标赛规模</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">精英比例</label>
-                                <input type="number" class="form-control algorithm-setting-input" id="eliteRatio" value="0.1" step="0.01" min="0" max="0.5">
-                                <div class="form-text">直接进入下一代的最优个体比例</div>
-                            </div>
-                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">早停耐心值</label>
+                                                <input type="number" class="form-control algorithm-setting-input" id="earlyStoppingPatience" value="200" min="50" max="1000">
+                                                <div class="form-text">连续多少代无改进后停止迭代</div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">约束惩罚因子</label>
+                                                <input type="number" class="form-control algorithm-setting-input" id="constraintPenaltyFactor" value="1500" min="100" max="10000">
+                                                <div class="form-text">约束违反的惩罚强度</div>
+                                            </div>
+                                        </div>
 
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">早停耐心值</label>
-                                <input type="number" class="form-control algorithm-setting-input" id="earlyStoppingPatience" value="200" min="50" max="1000">
-                                <div class="form-text">连续多少代无改进后停止迭代</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">约束惩罚因子</label>
-                                <input type="number" class="form-control algorithm-setting-input" id="constraintPenaltyFactor" value="1500" min="100" max="10000">
-                                <div class="form-text">约束违反的惩罚强度</div>
-                            </div>
-                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">并行工作线程</label>
+                                                <input type="number" class="form-control algorithm-setting-input" id="parallelWorkers" value="4" min="1" max="16">
+                                                <div class="form-text">并行计算使用的线程数</div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">多样性因子</label>
+                                                <input type="number" class="form-control algorithm-setting-input" id="diversityFactor" value="0.1" step="0.01" min="0" max="1">
+                                                <div class="form-text">种群多样性维护强度</div>
+                                            </div>
+                                        </div>
 
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">并行工作线程</label>
-                                <input type="number" class="form-control algorithm-setting-input" id="parallelWorkers" value="4" min="1" max="16">
-                                <div class="form-text">并行计算使用的线程数</div>
+                                        <div class="form-check mb-3">
+                                            <input class="form-check-input algorithm-setting-input" type="checkbox" id="adaptiveMutation" checked>
+                                            <label class="form-check-label" for="adaptiveMutation">
+                                                启用自适应变异
+                                            </label>
+                                            <div class="form-text">根据收敛情况动态调整变异率</div>
+                                        </div>
+
+                                        <div class="form-check mb-0">
+                                            <input class="form-check-input algorithm-setting-input" type="checkbox" id="parallelComputing" checked>
+                                            <label class="form-check-label" for="parallelComputing">
+                                                启用并行计算
+                                            </label>
+                                            <div class="form-text">使用多线程加速计算</div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label">多样性因子</label>
-                                <input type="number" class="form-control algorithm-setting-input" id="diversityFactor" value="0.1" step="0.01" min="0" max="1">
-                                <div class="form-text">种群多样性维护强度</div>
-                            </div>
-                        </div>
-
-                        <hr>
-                        <h6 class="mb-3">特殊选项</h6>
-
-                        <div class="form-check mb-3">
-                            <input class="form-check-input algorithm-setting-input" type="checkbox" id="adaptiveMutation" checked>
-                            <label class="form-check-label" for="adaptiveMutation">
-                                启用自适应变异
-                            </label>
-                            <div class="form-text">根据收敛情况动态调整变异率</div>
-                        </div>
-
-                        <div class="form-check mb-3">
-                            <input class="form-check-input algorithm-setting-input" type="checkbox" id="parallelComputing" checked>
-                            <label class="form-check-label" for="parallelComputing">
-                                启用并行计算
-                            </label>
-                            <div class="form-text">使用多线程加速计算</div>
                         </div>
                     </form>
                 </div>

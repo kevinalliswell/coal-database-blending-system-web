@@ -420,8 +420,14 @@ function setupBlendingEventListeners() {
     document.getElementById('applyGlobalRatioBtn')?.addEventListener('click', applyGlobalRatioConstraints);
     document.getElementById('saveAlgorithmSettingsBtn')?.addEventListener('click', saveAlgorithmSettings);
     document.getElementById('resetAlgorithmSettingsBtn')?.addEventListener('click', resetAlgorithmSettings);
-    document.getElementById('scrollToResultsBtn')?.addEventListener('click', scrollToResultsSection);
-    document.getElementById('scrollToResultsBtnMobile')?.addEventListener('click', scrollToResultsSection);
+    const resultScrollButtons = new Set([
+        document.getElementById('scrollToResultsBtn'),
+        document.getElementById('scrollToResultsBtnMobile'),
+        ...document.querySelectorAll('[data-action="scroll-results"]')
+    ].filter(Boolean));
+    resultScrollButtons.forEach(button => {
+        button.addEventListener('click', scrollToResultsSection);
+    });
     document.getElementById('backToWorkspaceBtn')?.addEventListener('click', scrollToWorkspaceSection);
     document.getElementById('exportReportBtn')?.addEventListener('click', exportOptimizationReport);
     document.getElementById('copyShareResultBtn')?.addEventListener('click', copyShareableResultText);
@@ -624,6 +630,7 @@ function updateSelectedCoalCount() {
     updateTextContent('sidebarSelectedCount', count);
     updateTextContent('mobileSelectedCount', count);
     updateTextContent('heroSelectedCount', count);
+    updateTextContent('flowSelectedCount', count);
 
     const selectedCoalNames = allCoals
         .filter(coal => selectedCoals.has(Number(coal.id)))
@@ -1174,6 +1181,7 @@ function displayOptimizationResults(status, data, message) {
     renderParetoSolutions(data, displayData?.selected_solution_id);
     updateCharts(displayData);
     updateQuickResultSummary(status, displayData, message);
+    revealResultsSectionAfterOptimization(displayData);
     updateActionButtonsState();
 }
 
@@ -1799,6 +1807,7 @@ function updateQuickResultSummary(status = null, data = null, message = '') {
     const resultsHeroStatusHint = document.getElementById('resultsHeroStatusHint');
     const resultsHeroConstraint = document.getElementById('resultsHeroConstraint');
     const resultsHeroAlgorithm = document.getElementById('resultsHeroAlgorithm');
+    const flowResultState = document.getElementById('flowResultState');
 
     if (!statusElement || !objectiveElement || !priceElement || !heatElement || !diagnosisElement || !feasibilityElement) {
         return;
@@ -1855,6 +1864,10 @@ function updateQuickResultSummary(status = null, data = null, message = '') {
 
         if (resultsHeroAlgorithm) {
             resultsHeroAlgorithm.textContent = overviewAlgorithmText;
+        }
+
+        if (flowResultState) {
+            flowResultState.textContent = metaText || statusText;
         }
     };
 
@@ -2163,13 +2176,42 @@ function syncWorkspaceStatus(tone, text, hint = '') {
         heroStatusPill.setAttribute('data-tone', tone || 'info');
         heroStatusPill.textContent = (text || '等待进一步操作').replace(/[。！!?]$/, '').split('，')[0];
     }
+
+    const flowSteps = document.querySelectorAll('.workflow-step');
+    if (flowSteps.length >= 3) {
+        flowSteps[0].classList.toggle('is-active', true);
+        flowSteps[1].classList.toggle('is-active', Boolean(selectedCoals.size >= 2));
+        flowSteps[2].classList.toggle('is-active', Boolean(latestDisplayedResult));
+    }
 }
 
 function setResultsSectionVisible(visible) {
     const section = document.getElementById('resultsSection');
     if (section) {
         section.classList.toggle('d-none', !visible);
+        section.classList.toggle('is-expanded', Boolean(visible));
     }
+    document.body?.classList.toggle('smart-results-visible', Boolean(visible));
+}
+
+function revealResultsSectionAfterOptimization(displayData) {
+    if (!displayData) {
+        return;
+    }
+
+    const section = document.getElementById('resultsSection');
+    if (!section) {
+        return;
+    }
+
+    setResultsSectionVisible(true);
+    section.setAttribute('tabindex', '-1');
+
+    const anchor = document.getElementById('resultsSectionAnchor') || section;
+    anchor.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+    });
 }
 
 function scrollToResultsSection() {
