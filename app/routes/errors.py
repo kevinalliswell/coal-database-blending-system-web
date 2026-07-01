@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""统一错误处理。"""
+"""统一错误处理。
 
-from flask import jsonify, render_template, request
+前端为单页应用：非 /api 的路径由 SPA 路由兜底（见 pages.py），
+因此错误处理只对 /api 或显式要求 JSON 的请求返回结构化错误，
+其余情况返回极简文本，不再依赖 Jinja 模板。
+"""
+
+from flask import jsonify, request
 
 
 def _wants_json_response() -> bool:
@@ -24,11 +29,11 @@ def register_error_handlers(app) -> None:
     def not_found(error):
         if _wants_json_response():
             return jsonify({"status": "error", "message": "请求的资源不存在"}), 404
-        return render_template("404.html"), 404
+        return "资源不存在", 404
 
     @app.errorhandler(500)
     def internal_error(error):
         app.logger.exception("服务器内部错误: %s", error)
         if _wants_json_response():
             return jsonify({"status": "error", "message": "服务器内部错误"}), 500
-        return render_template("500.html"), 500
+        return "服务器内部错误", 500

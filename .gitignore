@@ -14,9 +14,14 @@ venv/
 env/
 ENV/
 
-# Environment files
-.env
+# Environment files (backend root only; frontend .env.* are committed build flags)
+/.env
+/.env.local
 .env.local
+
+# Node / frontend
+node_modules/
+frontend/.vite/
 
 # Flask / runtime artifacts
 instance/

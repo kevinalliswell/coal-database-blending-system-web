@@ -1,0 +1,22 @@
+services:
+  cbos-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cbos-web:latest
+    container_name: cbos-web
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_CONFIG: production
+      DATA_STORAGE_MODE: sqlite
+      # 覆盖为外部数据库时取消注释：
+      # DATABASE_URL: mysql+pymysql://user:pass@db:3306/cbos
+      SECRET_KEY: change-me-in-production
+    volumes:
+      # 持久化运行期 SQLite 数据与上传文件
+      - cbos-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  cbos-data:

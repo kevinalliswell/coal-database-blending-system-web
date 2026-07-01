@@ -42,6 +42,8 @@ class Config:
     COAL_DATA_PATH = str(DATA_PATH / "test_coal_datas.csv")
     DATABASE_PATH = str(DEFAULT_DB_PATH)
     STATIC_IMAGES_DIR = str(BASE_DIR_PATH / "static" / "images")
+    # 构建后的单页应用目录（frontend/dist）。生产由 Flask 直接托管此目录。
+    SPA_DIST_DIR = str(BASE_DIR_PATH / "frontend" / "dist")
 
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024
     ALLOWED_EXTENSIONS = {"csv", "xlsx", "xls"}
