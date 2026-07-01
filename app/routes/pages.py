@@ -60,10 +60,13 @@ def favicon():
 @page_bp.get("/health")
 def health_check():
     """健康检查接口。"""
+    from app.models import Coal
+
     return jsonify(
         {
             "status": "ok",
             "app": current_app.config["APP_NAME"],
             "storage_mode": current_app.config["DATA_STORAGE_MODE"],
+            "coal_count": Coal.query.count(),
         }
     )

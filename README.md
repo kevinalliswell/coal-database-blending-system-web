@@ -6,8 +6,8 @@
 
 - 保留原有业务代码和前端页面，不用示例代码替换真实逻辑
 - 新增标准 `app/` 包，采用 Flask 应用工厂模式
-- 默认沿用当前稳定的 CSV 数据链路，降低改造风险
-- 同步接入 Flask-SQLAlchemy 和 Flask-Migrate，为后续数据库化改造预留标准能力
+- 默认使用 SQLite/SQLAlchemy 管理煤种数据，CSV 仅作为初始种子和导入文件格式
+- 同步接入 Flask-SQLAlchemy 和 Flask-Migrate，支持本地自动建表和后续迁移管理
 - 提供 `run.py` 和 `wsgi.py`，兼容本地开发与 Gunicorn 部署
 
 ## 技术栈
@@ -30,9 +30,9 @@
 │   ├── extensions.py        # Flask 扩展实例
 │   ├── models/              # SQLAlchemy 模型
 │   ├── routes/              # 蓝图注册与页面路由
-│   ├── services/            # 历史服务兼容导出
+│   ├── services/            # SQLite 煤种服务与历史服务兼容导出
 │   └── utils/               # 历史工具兼容导出
-├── backend/                 # 历史业务代码（保留）
+├── backend/                 # 业务路由、算法服务和工具实现
 ├── data/                    # 样例数据与运行数据目录
 ├── static/                  # 静态资源
 ├── templates/               # 页面模板
@@ -64,7 +64,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-默认使用 `csv` 数据模式，读取 `data/test_coal_datas.csv`。如果要切换到数据库模式，请将 `.env` 中的 `DATA_STORAGE_MODE` 改为 `database`，并按需配置 `DATABASE_URL`。
+默认使用 `sqlite` 数据模式，数据库文件位于 `data/coal_system.db`。首次访问接口时会自动建表，并在煤种表为空时从 `data/test_coal_datas.csv` 初始化种子数据。也可以通过 `DATABASE_URL` 指向其他 SQLAlchemy 数据库连接。
 
 ### 4. 启动项目
 
@@ -98,18 +98,23 @@ app = create_app()
 
 ## 数据库迁移
 
-当前仓库已经定义 ORM 模型，可按如下命令初始化迁移目录并生成迁移脚本：
+当前仓库已经包含迁移目录和基线迁移脚本。新环境启动前可执行：
 
 ```bash
-flask --app run.py db init
-flask --app run.py db migrate -m "init schema"
+flask --app run.py db upgrade
+```
+
+当 ORM 模型发生结构性变更时，再生成新的迁移脚本：
+
+```bash
+flask --app run.py db migrate -m "describe schema change"
 flask --app run.py db upgrade
 ```
 
 说明：
 
-- 默认运行模式仍是 CSV，以保证历史业务逻辑可直接使用
-- ORM 模型对应历史数据库结构，后续可逐步将 CSV 读写迁移到数据库服务层
+- 默认运行模式为 SQLite，煤种管理和智能混煤接口均通过 ORM 读取同一份数据
+- CSV 文件不再作为运行时存储，只保留为初始化种子和批量导入来源
 
 ## 主要接口
 
@@ -143,10 +148,10 @@ gunicorn -w 2 -b 0.0.0.0:5000 wsgi:app
 
 - 不要提交 `.env`、虚拟环境、缓存文件和数据库文件
 - `data/uploads/`、`data/history/` 属于运行时产物，已加入 `.gitignore`
-- 当前仓库保留了 `backend/` 历史代码，便于后续逐步替换，而不是一次性重写
+- `backend/` 当前承载业务路由、算法服务和通用工具，`app/` 负责应用工厂、模型、配置和蓝图装配
 
 ## 后续建议
 
-- 为 `app/services/` 增加面向 ORM 的正式服务实现，逐步替换 CSV 读写
-- 建立 `tests/` 目录，为核心计算和 API 增加自动化测试
-- 初始化 `migrations/` 并纳入版本管理，形成数据库演进基线
+- 补充更多浏览器端流程测试，覆盖煤种 CRUD、导入导出、智能混煤、置换比和历史详情弹窗
+- 持续收敛 `backend/` 与 `app/` 的兼容层边界，优先减少重复入口和过期说明
+- 按实际部署环境补充数据库备份、迁移回滚和运行监控说明

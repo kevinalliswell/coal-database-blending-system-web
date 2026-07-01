@@ -2,6 +2,7 @@
 
 // 全局变量
 let contributionChart = null;
+let ratioProgressTimer = null;
 
 // DOM加载完成后执行
 document.addEventListener('DOMContentLoaded', function() {
@@ -13,10 +14,12 @@ document.addEventListener('DOMContentLoaded', function() {
 // 初始化页面
 function initializePage() {
     // 初始化计算类型切换
-    updateCalculationSections();
+    updateCalculationSections({ keepResults: true });
     
     // 初始化图表
     initializeChart();
+
+    setRatioStatus('info', '选择计算模式并确认参数后即可开始。', '参数会自动保存在本地浏览器，方便下一次继续计算。');
 }
 
 // 绑定事件
@@ -24,7 +27,10 @@ function bindEvents() {
     // 计算类型切换
     const calculationTypeRadios = document.querySelectorAll('input[name="calculationType"]');
     calculationTypeRadios.forEach(radio => {
-        radio.addEventListener('change', updateCalculationSections);
+        radio.addEventListener('change', () => {
+            updateCalculationSections();
+            saveToLocalStorage();
+        });
     });
     
     // 按钮事件
@@ -39,22 +45,48 @@ function bindEvents() {
     const numberInputs = document.querySelectorAll('input[type="number"]');
     numberInputs.forEach(input => {
         input.addEventListener('blur', validateInput);
-        input.addEventListener('input', saveToLocalStorage);
+        input.addEventListener('input', () => {
+            saveToLocalStorage();
+            markParametersDirty();
+        });
+    });
+
+    const checkboxInputs = document.querySelectorAll('input[type="checkbox"]');
+    checkboxInputs.forEach(input => {
+        input.addEventListener('change', () => {
+            saveToLocalStorage();
+            markParametersDirty();
+        });
     });
 }
 
 // 更新计算章节显示
-function updateCalculationSections() {
-    const selectedType = document.querySelector('input[name="calculationType"]:checked').value;
+function updateCalculationSections(options = {}) {
+    const selectedType = getSelectedCalculationType();
     const theorySection = document.getElementById('theorySection');
     const actualSection = document.getElementById('actualSection');
+    const isTheory = selectedType === 'theory';
+    const meta = getModeMeta(selectedType);
     
-    if (selectedType === 'theory') {
-        theorySection.style.display = 'block';
-        actualSection.style.display = 'none';
-    } else {
-        theorySection.style.display = 'none';
-        actualSection.style.display = 'block';
+    setElementHidden(theorySection, !isTheory);
+    setElementHidden(actualSection, isTheory);
+
+    document.querySelectorAll('[data-mode-card]').forEach(card => {
+        card.classList.toggle('is-active', card.dataset.modeCard === selectedType);
+    });
+
+    updateTextContent('ratioModeLabel', meta.label);
+    updateTextContent('ratioModeHint', meta.hint);
+    updateTextContent('ratioModeBadge', meta.badge);
+
+    if (!options.keepStatus) {
+        setRatioStatus('info', meta.readyText, meta.readyHint);
+    }
+
+    if (!options.keepResults) {
+        setElementHidden(document.getElementById('resultsSection'), true);
+        updateTextContent('ratioLastResultValue', '--');
+        updateTextContent('ratioLastResultLabel', '等待重新计算');
     }
 }
 
@@ -71,13 +103,13 @@ function validateInput(event) {
         return false;
     }
     
-    if (min !== undefined && value < min) {
+    if (!Number.isNaN(min) && value < min) {
         showAlert(`输入值不能小于 ${min}`, 'warning');
         input.focus();
         return false;
     }
     
-    if (max !== undefined && value > max) {
+    if (!Number.isNaN(max) && value > max) {
         showAlert(`输入值不能大于 ${max}`, 'warning');
         input.focus();
         return false;
@@ -88,12 +120,17 @@ function validateInput(event) {
 
 // 执行计算
 async function performCalculation() {
-    const selectedType = document.querySelector('input[name="calculationType"]:checked').value;
+    const selectedType = getSelectedCalculationType();
     const calculateBtn = document.getElementById('calculateBtn');
+
+    if (!validateVisibleNumberInputs()) {
+        return;
+    }
     
     // 显示计算中状态
-    calculateBtn.disabled = true;
-    calculateBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>计算中...';
+    setCalculateButtonLoading(true);
+    setRatioStatus('info', '正在计算置换比，请稍候。', '系统正在提交参数、等待接口返回并写入历史记录。');
+    showRatioProgress(true);
     
     try {
         let result;
@@ -108,7 +145,9 @@ async function performCalculation() {
         }
         
         displayResults(result, selectedType);
-        document.getElementById('resultsSection').style.display = 'block';
+        setElementHidden(document.getElementById('resultsSection'), false);
+        setRatioStatus('success', `${getModeMeta(selectedType).label}计算完成。`, '结果已返回，当前记录已写入置换比历史。');
+        showAlert('计算完成，结果已展开。', 'success');
         
         // 滚动到结果区域
         document.getElementById('resultsSection').scrollIntoView({ 
@@ -117,12 +156,12 @@ async function performCalculation() {
         });
         
     } catch (error) {
-        console.error('计算错误:', error);
         showAlert('计算过程中出现错误: ' + error.message, 'danger');
+        setRatioStatus('danger', '计算失败，请检查参数或稍后重试。', error.message);
     } finally {
         // 恢复按钮状态
-        calculateBtn.disabled = false;
-        calculateBtn.innerHTML = '<i class="bi bi-calculator me-2"></i>开始计算';
+        setCalculateButtonLoading(false);
+        showRatioProgress(false);
     }
 }
 
@@ -201,10 +240,14 @@ async function calculateActualRatio() {
 
 // 显示计算结果
 function displayResults(result, calculationType) {
+    const ratioText = Number(result.ratio).toFixed(6);
+
     // 显示主要结果
     document.getElementById('resultTitle').textContent = 
         calculationType === 'theory' ? '理论置换比' : '实际置换比';
-    document.getElementById('mainResultValue').textContent = result.ratio.toFixed(6);
+    document.getElementById('mainResultValue').textContent = ratioText;
+    updateTextContent('ratioLastResultValue', ratioText);
+    updateTextContent('ratioLastResultLabel', `${getModeMeta(calculationType).label}最新结果`);
     
     // 显示详细计算过程
     displayCalculationDetails(result.details);
@@ -215,12 +258,12 @@ function displayResults(result, calculationType) {
     // 显示特定类型的结果
     if (calculationType === 'theory') {
         displayTheoryResults(result);
-        document.getElementById('theoryResults').style.display = 'block';
-        document.getElementById('actualResults').style.display = 'none';
+        setElementHidden(document.getElementById('theoryResults'), false);
+        setElementHidden(document.getElementById('actualResults'), true);
     } else {
         displayActualResults(result);
-        document.getElementById('theoryResults').style.display = 'none';
-        document.getElementById('actualResults').style.display = 'block';
+        setElementHidden(document.getElementById('theoryResults'), true);
+        setElementHidden(document.getElementById('actualResults'), false);
     }
 }
 
@@ -297,7 +340,12 @@ function displayActualResults(result) {
 
 // 初始化图表
 function initializeChart() {
-    const ctx = document.getElementById('contributionChart').getContext('2d');
+    const canvas = document.getElementById('contributionChart');
+    if (!canvas || typeof Chart === 'undefined') {
+        return;
+    }
+
+    const ctx = canvas.getContext('2d');
     contributionChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -328,11 +376,15 @@ function initializeChart() {
 
 // 更新贡献图表
 function updateContributionChart(details) {
+    if (!contributionChart) {
+        return;
+    }
+
     const labels = [];
     const data = [];
     
     // 根据计算类型选择不同的参数
-    const selectedType = document.querySelector('input[name="calculationType"]:checked').value;
+    const selectedType = getSelectedCalculationType();
     
     if (selectedType === 'theory') {
         // 理论计算的主要贡献参数
@@ -366,7 +418,7 @@ function updateContributionChart(details) {
 
 // 重置参数
 function resetParameters() {
-    const selectedType = document.querySelector('input[name="calculationType"]:checked').value;
+    const selectedType = getSelectedCalculationType();
     
     if (selectedType === 'theory') {
         // 重置理论计算参数为默认值
@@ -398,14 +450,18 @@ function resetParameters() {
     }
     
     // 隐藏结果区域
-    document.getElementById('resultsSection').style.display = 'none';
+    setElementHidden(document.getElementById('resultsSection'), true);
+    updateTextContent('ratioLastResultValue', '--');
+    updateTextContent('ratioLastResultLabel', '等待重新计算');
+    saveToLocalStorage();
+    setRatioStatus('info', '当前模式参数已重置。', '可以直接开始计算，或先加载示例数据。');
     
     showAlert('参数已重置为默认值', 'info');
 }
 
 // 加载示例数据
 function loadExampleData() {
-    const selectedType = document.querySelector('input[name="calculationType"]:checked').value;
+    const selectedType = getSelectedCalculationType();
     
     if (selectedType === 'theory') {
         // 加载理论计算示例数据
@@ -436,12 +492,14 @@ function loadExampleData() {
         document.getElementById('enableAdvancedCalculation').checked = true;
     }
     
+    saveToLocalStorage();
+    setRatioStatus('info', '示例数据已加载。', '确认参数后点击开始计算。');
     showAlert('示例数据已加载', 'success');
 }
 
 // 导出结果
 function exportResults() {
-    const selectedType = document.querySelector('input[name="calculationType"]:checked').value;
+    const selectedType = getSelectedCalculationType();
     const resultValue = document.getElementById('mainResultValue').textContent;
     
     if (resultValue === '--') {
@@ -502,7 +560,7 @@ function openHistoryPage() {
 
 // 生成打印内容
 function generatePrintContent() {
-    const selectedType = document.querySelector('input[name="calculationType"]:checked').value;
+    const selectedType = getSelectedCalculationType();
     const resultValue = document.getElementById('mainResultValue').textContent;
     const calculationDate = new Date().toLocaleString();
     
@@ -538,171 +596,11 @@ function generatePrintContent() {
     `;
 }
 
-// 添加到历史记录
-function addToHistory(result, calculationType) {
-    const historyItem = {
-        timestamp: new Date().toLocaleString(),
-        type: calculationType === 'theory' ? '理论置换比' : '实际置换比',
-        result: result.ratio.toFixed(6),
-        parameters: collectCurrentParameters(),
-        details: result.details
-    };
-    
-    calculationHistory.unshift(historyItem);
-    
-    // 限制历史记录数量
-    if (calculationHistory.length > 20) {
-        calculationHistory = calculationHistory.slice(0, 20);
-    }
-    
-    updateHistoryTable();
-    saveHistoryToLocalStorage();
-}
-
-// 收集当前参数
-function collectCurrentParameters() {
-    const selectedType = document.querySelector('input[name="calculationType"]:checked').value;
-    const params = {};
-    
-    if (selectedType === 'theory') {
-        params['煤粉含碳量'] = document.getElementById('coalCarbonContent').value + '%';
-        params['焦炭含碳量'] = document.getElementById('cokeCarbonContent').value + '%';
-        params['煤气利用率'] = document.getElementById('gasUtilization').value;
-    } else {
-        params['调整前焦比'] = document.getElementById('initialCokeRatio').value + ' kg/t';
-        params['调整后焦比'] = document.getElementById('finalCokeRatio').value + ' kg/t';
-        params['调整前煤比'] = document.getElementById('initialCoalRatio').value + ' kg/t';
-        params['调整后煤比'] = document.getElementById('finalCoalRatio').value + ' kg/t';
-    }
-    
-    return params;
-}
-
-// 更新历史记录表
-function updateHistoryTable() {
-    const tbody = document.querySelector('#historyTable tbody');
-    tbody.innerHTML = '';
-    
-    if (calculationHistory.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无计算历史</td></tr>';
-        return;
-    }
-    
-    calculationHistory.forEach((item, index) => {
-        const row = document.createElement('tr');
-        const parametersSummary = Object.entries(item.parameters)
-            .slice(0, 2)
-            .map(([key, value]) => `${key}: ${value}`)
-            .join(', ');
-        
-        row.innerHTML = `
-            <td>${item.timestamp}</td>
-            <td><span class="badge ${item.type === '理论置换比' ? 'bg-primary' : 'bg-success'}">${item.type}</span></td>
-            <td><strong>${item.result}</strong></td>
-            <td>${parametersSummary}</td>
-            <td>
-                <button class="btn btn-sm btn-outline-primary" onclick="viewHistoryDetail(${index})">
-                    <i class="bi bi-eye"></i> 查看
-                </button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteHistoryItem(${index})">
-                    <i class="bi bi-trash"></i> 删除
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-}
-
-// 查看历史详情
-function viewHistoryDetail(index) {
-    const item = calculationHistory[index];
-    
-    // 创建模态框显示详细信息
-    const modalHtml = `
-        <div class="modal fade" id="historyDetailModal" tabindex="-1">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">计算历史详情 - ${item.type}</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <p><strong>计算时间:</strong> ${item.timestamp}</p>
-                        <p><strong>计算结果:</strong> ${item.result}</p>
-                        <h6>详细计算过程:</h6>
-                        <table class="table table-striped">
-                            <tbody>
-                                ${Object.entries(item.details).map(([key, value]) => 
-                                    `<tr><td><strong>${key}</strong></td><td>${formatValue(value)}</td></tr>`
-                                ).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-                        <button type="button" class="btn btn-primary" onclick="loadHistoryParameters(${index})">加载参数</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // 移除现有模态框并添加新的
-    const existingModal = document.getElementById('historyDetailModal');
-    if (existingModal) {
-        existingModal.remove();
-    }
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    const modal = new bootstrap.Modal(document.getElementById('historyDetailModal'));
-    modal.show();
-}
-
-// 加载历史参数
-function loadHistoryParameters(index) {
-    const item = calculationHistory[index];
-    
-    // 根据计算类型设置相应的参数
-    if (item.type === '理论置换比') {
-        document.getElementById('theoryCalculation').checked = true;
-        // 这里需要根据保存的参数来设置具体数值
-        // 由于历史记录中没有保存完整参数，这里只是示例
-    } else {
-        document.getElementById('actualCalculation').checked = true;
-        // 类似地设置实际计算参数
-    }
-    
-    updateCalculationSections();
-    showAlert('历史参数已加载', 'success');
-    
-    // 关闭模态框
-    const modal = bootstrap.Modal.getInstance(document.getElementById('historyDetailModal'));
-    modal.hide();
-}
-
-// 删除历史记录项
-function deleteHistoryItem(index) {
-    if (confirm('确定要删除这条历史记录吗？')) {
-        calculationHistory.splice(index, 1);
-        updateHistoryTable();
-        saveHistoryToLocalStorage();
-        showAlert('历史记录已删除', 'info');
-    }
-}
-
-// 清空历史记录
-function clearHistory() {
-    if (confirm('确定要清空所有历史记录吗？')) {
-        calculationHistory = [];
-        updateHistoryTable();
-        saveHistoryToLocalStorage();
-        showAlert('历史记录已清空', 'info');
-    }
-}
-
 // 本地存储相关函数
 function saveToLocalStorage() {
-    const data = {};
+    const data = {
+        calculationType: getSelectedCalculationType()
+    };
     const inputs = document.querySelectorAll('input[type="number"], input[type="checkbox"]');
     
     inputs.forEach(input => {
@@ -721,7 +619,18 @@ function loadFromLocalStorage() {
     if (data) {
         try {
             const params = JSON.parse(data);
+            if (params.calculationType) {
+                const savedRadio = document.querySelector(`input[name="calculationType"][value="${params.calculationType}"]`);
+                if (savedRadio) {
+                    savedRadio.checked = true;
+                }
+            }
+
             Object.entries(params).forEach(([key, value]) => {
+                if (key === 'calculationType') {
+                    return;
+                }
+
                 const element = document.getElementById(key);
                 if (element) {
                     if (element.type === 'checkbox') {
@@ -731,30 +640,135 @@ function loadFromLocalStorage() {
                     }
                 }
             });
+            updateCalculationSections({ keepResults: true });
         } catch (error) {
-            console.error('加载本地存储数据失败:', error);
-        }
-    }
-}
-
-function saveHistoryToLocalStorage() {
-    localStorage.setItem('replacementRatioHistory', JSON.stringify(calculationHistory));
-}
-
-function loadCalculationHistory() {
-    const data = localStorage.getItem('replacementRatioHistory');
-    if (data) {
-        try {
-            calculationHistory = JSON.parse(data);
-            updateHistoryTable();
-        } catch (error) {
-            console.error('加载历史记录失败:', error);
-            calculationHistory = [];
+            showAlert('本地参数读取失败，已使用页面默认值', 'warning');
         }
     }
 }
 
 // 工具函数
+function getSelectedCalculationType() {
+    return document.querySelector('input[name="calculationType"]:checked')?.value || 'theory';
+}
+
+function getModeMeta(type = getSelectedCalculationType()) {
+    if (type === 'actual') {
+        return {
+            label: '实际置换比',
+            hint: '基于焦比、煤比变化和生产修正计算',
+            badge: '生产数据模型',
+            readyText: '当前为实际置换比模式，请确认生产数据后开始。',
+            readyHint: '可启用生产因素修正，纳入产量、渣比和碳效率变化。'
+        };
+    }
+
+    return {
+        label: '理论置换比',
+        hint: '基于煤粉、焦炭和高炉工艺参数计算',
+        badge: '理论模型',
+        readyText: '当前为理论置换比模式，请确认煤粉、焦炭和高炉参数。',
+        readyHint: '理论模式会返回碳量平衡、热量平衡和贡献图。'
+    };
+}
+
+function updateTextContent(id, value) {
+    const element = document.getElementById(id);
+    if (element) {
+        element.textContent = value;
+    }
+}
+
+function setElementHidden(element, hidden) {
+    if (!element) {
+        return;
+    }
+
+    element.hidden = Boolean(hidden);
+}
+
+function setRatioStatus(tone, text, hint) {
+    const statusBar = document.getElementById('ratioStatusBar');
+    const statusPill = document.getElementById('ratioStatusPill');
+
+    if (statusBar) {
+        statusBar.dataset.tone = tone || 'info';
+    }
+
+    if (statusPill) {
+        statusPill.dataset.tone = tone || 'info';
+        statusPill.textContent = getStatusLabel(tone, text);
+    }
+
+    updateTextContent('ratioStatusText', text);
+    updateTextContent('ratioStatusHint', hint || '');
+}
+
+function getStatusLabel(tone, text) {
+    if (tone === 'success') {
+        return '计算完成';
+    }
+    if (tone === 'danger') {
+        return '计算失败';
+    }
+    if (tone === 'warning') {
+        return '请检查参数';
+    }
+    return text?.includes('正在') ? '计算中' : '等待计算';
+}
+
+function markParametersDirty() {
+    setRatioStatus('info', '参数已更新，结果需重新计算。', '点击开始计算后会刷新结果并保存新的历史记录。');
+}
+
+function validateVisibleNumberInputs() {
+    const inputs = Array.from(document.querySelectorAll('.calculation-section:not([hidden]) input[type="number"]'));
+    return inputs.every(input => validateInput({ target: input }));
+}
+
+function setCalculateButtonLoading(isLoading) {
+    const calculateBtn = document.getElementById('calculateBtn');
+    if (!calculateBtn) {
+        return;
+    }
+
+    calculateBtn.disabled = isLoading;
+    calculateBtn.innerHTML = isLoading
+        ? '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>计算中...'
+        : '<i class="bi bi-calculator me-2"></i>开始计算';
+}
+
+function showRatioProgress(visible) {
+    const panel = document.getElementById('ratioProgressPanel');
+    const bar = document.getElementById('ratioProgressBar');
+    if (!panel || !bar) {
+        return;
+    }
+
+    window.clearInterval(ratioProgressTimer);
+    ratioProgressTimer = null;
+
+    if (!visible) {
+        panel.classList.add('d-none');
+        bar.style.width = '16%';
+        updateTextContent('ratioProgressTitle', '正在请求计算接口');
+        updateTextContent('ratioProgressMeta', '通常几秒内完成');
+        return;
+    }
+
+    let progress = 16;
+    panel.classList.remove('d-none');
+    bar.style.width = `${progress}%`;
+    updateTextContent('ratioProgressTitle', '正在计算置换比');
+    updateTextContent('ratioProgressMeta', '正在处理参数');
+
+    ratioProgressTimer = window.setInterval(() => {
+        progress = Math.min(progress + 12, 88);
+        bar.style.width = `${progress}%`;
+        updateTextContent('ratioProgressMeta', progress >= 70 ? '等待服务端返回结果' : '正在写入计算历史');
+    }, 420);
+}
+
 function formatValue(value) {
     if (typeof value === 'number') {
         return value.toFixed(6);
@@ -763,20 +777,48 @@ function formatValue(value) {
 }
 
 function showAlert(message, type = 'info') {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    const container = getToastContainer();
+
+    if (!window.bootstrap?.Toast) {
+        console[type === 'danger' ? 'error' : 'log'](message);
+        return;
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'toast coal-toast';
+    toast.role = 'alert';
+    toast.innerHTML = `
+        <div class="toast-header">
+            <i class="bi bi-info-circle text-${type} me-2"></i>
+            <strong class="me-auto">系统提示</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">${escapeHtml(message)}</div>
     `;
-    
-    document.body.insertAdjacentElement('afterbegin', alertDiv);
-    
-    setTimeout(() => {
-        if (alertDiv.parentNode) {
-            alertDiv.remove();
-        }
-    }, 5000);
+
+    container.appendChild(toast);
+    toast.addEventListener('hidden.bs.toast', () => toast.remove());
+    bootstrap.Toast.getOrCreateInstance(toast, { delay: type === 'danger' ? 5200 : 3200 }).show();
+}
+
+function getToastContainer() {
+    let container = document.getElementById('replacementRatioToastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'replacementRatioToastContainer';
+        container.className = 'toast-container position-fixed top-0 end-0 p-3';
+        document.body.appendChild(container);
+    }
+    return container;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 function downloadExcel(data, filename) {

@@ -1,6 +1,6 @@
 # API 接口说明
 
-本文档整理当前项目已注册并对外提供的后端接口，统一以 `/api` 为前缀。当前说明基于默认 CSV 数据模式下的有效路由，不包含未注册的数据库实验接口。
+本文档整理当前项目已注册并对外提供的后端接口，统一以 `/api` 为前缀。当前默认数据模式为 SQLite/SQLAlchemy：煤种 CRUD、智能混煤读取和优化历史都使用同一份数据库。CSV/Excel 仅作为导入、导出和首次种子初始化的数据格式。
 
 ## 1. 基本约定
 
@@ -162,9 +162,13 @@ GET /api/coals/1
 ```json
 {
   "status": "success",
-  "message": "文件上传成功",
+  "message": "文件上传完成：新增 10 条，更新 2 条，跳过 0 条",
   "filename": "uploaded.xlsx",
-  "coal_count": 12
+  "coal_count": 12,
+  "created_count": 10,
+  "updated_count": 2,
+  "skipped_count": 0,
+  "errors": []
 }
 ```
 
@@ -367,7 +371,7 @@ GET /api/coals/1
 - 方法：`GET`
 - 路径：`/optimization/history/{history_id}`
 
-说明：`history_id` 对应历史文件名中的时间戳部分。
+说明：`history_id` 对应 SQLite `optimization_history` 表中的记录 `id`。
 
 ## 4. 置换比计算
 
@@ -446,7 +450,28 @@ GET /api/coals/1
 
 - 方法：`GET`
 - 路径：`/replacement_ratio/history`
-- 说明：当前返回空列表占位，尚未实现持久化历史
+- 说明：返回 SQLite `replacement_ratio_history` 表中的理论置换比和实际置换比历史记录。
+
+返回字段：
+
+- `id`
+- `date`
+- `calculation_type`：`theory` 或 `actual`
+- `calculation_mode`：`theory`、`basic` 或 `advanced`
+- `ratio_value`
+- `parameter_summary`
+
+### 4.4 获取置换比历史详情
+
+- 方法：`GET`
+- 路径：`/replacement_ratio/history/{history_id}`
+- 说明：`history_id` 对应 SQLite `replacement_ratio_history` 表中的记录 `id`。
+
+返回字段：
+
+- 历史摘要字段
+- `request_payload`
+- `result_payload`
 
 ## 5. 报表导出
 
@@ -474,4 +499,4 @@ GET /api/coals/1
 - 前端执行智能混煤前，先调用 `/coals` 获取煤种列表与 `id`
 - 若需要展示历史推荐方案，优先读取 `/optimization/history`
 - 若要导出报表，当前优化结果直接走 `/optimization/export/current`，历史记录走 `/optimization/export/{history_id}`
-- 置换比接口中的参数为计算参数，不依赖煤种库主表
+- 置换比接口中的参数为计算参数，不依赖煤种库主表；计算完成后会写入置换比历史表，供历史页面和详情接口查询

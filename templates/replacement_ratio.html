@@ -10,13 +10,12 @@
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any">
 </head>
 <body>
-    <!-- 导航栏 -->
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container">
             <a class="navbar-brand" href="/">
                 <i class="bi bi-gear-fill me-2"></i>煤种数据库管理及配煤优化系统
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-label="切换导航">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
@@ -42,423 +41,476 @@
                             <li><a class="dropdown-item" href="/optimization_history/replacement_ratio">置换比历史</a></li>
                         </ul>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#"><i class="bi bi-gear me-1"></i>系统设置</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#"><i class="bi bi-question-circle me-1"></i>帮助</a>
-                    </li>
                 </ul>
             </div>
         </div>
     </nav>
 
-    <!-- 主内容区 -->
-    <div class="container my-4">
-        <!-- 页面标题 -->
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h2><i class="bi bi-calculator me-2"></i>煤焦置换比计算</h2>
-                        <p class="text-muted">基于冶金理论计算理论置换比和实际置换比</p>
+    <main class="container my-4 replacement-ratio-page">
+        <section class="page-hero mb-4">
+            <div class="page-hero__body">
+                <div class="page-hero__content">
+                    <div class="page-hero__eyebrow">Replacement Ratio Console</div>
+                    <h1 class="page-hero__title">煤焦置换比计算工作台</h1>
+                    <p class="page-hero__subtitle mb-0">统一处理理论置换比和生产实际置换比，计算结果会进入 SQLite 历史记录，便于后续追溯与对比。</p>
+                    <div class="page-hero__stats replacement-ratio-stats">
+                        <div class="hero-stat">
+                            <span class="hero-stat__label">当前模式</span>
+                            <strong class="hero-stat__value" id="ratioModeLabel">理论置换比</strong>
+                            <span class="hero-stat__hint" id="ratioModeHint">基于煤粉、焦炭和高炉工艺参数计算</span>
+                        </div>
+                        <div class="hero-stat">
+                            <span class="hero-stat__label">最近结果</span>
+                            <strong class="hero-stat__value" id="ratioLastResultValue">--</strong>
+                            <span class="hero-stat__hint" id="ratioLastResultLabel">运行计算后显示</span>
+                        </div>
+                        <div class="hero-stat">
+                            <span class="hero-stat__label">数据落库</span>
+                            <strong class="hero-stat__value">SQLite</strong>
+                            <span class="hero-stat__hint">接口成功后自动写入历史</span>
+                        </div>
                     </div>
                 </div>
+                <div class="page-hero__meta">
+                    <span class="page-hero__meta-label">工作状态</span>
+                    <span class="hero-status-pill" data-tone="info" id="ratioStatusPill">
+                        <i class="bi bi-hourglass me-1"></i>等待计算
+                    </span>
+                    <div class="page-hero__meta-divider"></div>
+                    <span class="page-hero__meta-label">历史记录</span>
+                    <a href="/optimization_history/replacement_ratio" class="btn btn-primary btn-sm mt-2">
+                        <i class="bi bi-clock-history me-1"></i>查看历史
+                    </a>
+                </div>
             </div>
-        </div>
+        </section>
 
-        <!-- 计算类型选择 -->
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header">
-                        <i class="bi bi-toggles me-2"></i>计算类型选择
+        <section class="workspace-statusbar mb-4" id="ratioStatusBar" data-tone="info" role="status" aria-live="polite">
+            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                    <i class="bi bi-activity me-2"></i>
+                    <span id="ratioStatusText">选择计算模式并确认参数后即可开始。</span>
+                </div>
+                <div class="small text-muted" id="ratioStatusHint">参数会自动保存在本地浏览器，方便下一次继续计算。</div>
+            </div>
+            <div class="optimization-progress d-none" id="ratioProgressPanel">
+                <div class="optimization-progress__top">
+                    <div class="optimization-progress__title">
+                        <i class="bi bi-hourglass-split me-2"></i>
+                        <span id="ratioProgressTitle">正在请求计算接口</span>
+                    </div>
+                    <div class="optimization-progress__meta" id="ratioProgressMeta">通常几秒内完成</div>
+                </div>
+                <div class="progress optimization-progress__bar">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" id="ratioProgressBar" role="progressbar" style="width: 16%"></div>
+                </div>
+                <div class="optimization-progress__hint" id="ratioProgressHint">请保持页面打开，计算完成后会自动展开结果。</div>
+            </div>
+        </section>
+
+        <div class="row g-4 replacement-ratio-layout">
+            <section class="col-xl-8">
+                <div class="card replacement-workbench-card">
+                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <span><i class="bi bi-sliders me-2"></i>计算参数</span>
+                        <span class="badge bg-light text-dark" id="ratioModeBadge">理论模型</span>
                     </div>
                     <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="calculationType" id="theoryCalculation" value="theory" checked>
-                                    <label class="form-check-label" for="theoryCalculation">
-                                        <strong>理论置换比计算</strong>
-                                        <div class="text-muted small">基于冶金理论和物理化学原理，计算理论置换比</div>
-                                    </label>
+                        <div class="ratio-mode-grid mb-4">
+                            <label class="ratio-mode-option is-active" for="theoryCalculation" data-mode-card="theory">
+                                <input class="form-check-input" type="radio" name="calculationType" id="theoryCalculation" value="theory" checked>
+                                <span class="ratio-mode-option__icon"><i class="bi bi-diagram-3"></i></span>
+                                <span class="ratio-mode-option__body">
+                                    <strong>理论置换比</strong>
+                                    <small>从煤粉、焦炭和高炉工艺参数推导理论值</small>
+                                </span>
+                            </label>
+                            <label class="ratio-mode-option" for="actualCalculation" data-mode-card="actual">
+                                <input class="form-check-input" type="radio" name="calculationType" id="actualCalculation" value="actual">
+                                <span class="ratio-mode-option__icon"><i class="bi bi-clipboard-data"></i></span>
+                                <span class="ratio-mode-option__body">
+                                    <strong>实际置换比</strong>
+                                    <small>根据焦比、煤比变化和生产修正计算</small>
+                                </span>
+                            </label>
+                        </div>
+
+                        <section id="theorySection" class="calculation-section">
+                            <div class="ratio-parameter-grid ratio-parameter-grid--three">
+                                <div class="ratio-parameter-panel">
+                                    <div class="ratio-parameter-panel__header">
+                                        <i class="bi bi-fuel-pump"></i>
+                                        <div>
+                                            <h2>煤粉参数</h2>
+                                            <p>决定煤粉有效碳、氢替代和热耗修正。</p>
+                                        </div>
+                                    </div>
+                                    <div class="row g-3">
+                                        <div class="col-md-6 col-xl-12">
+                                            <label class="form-label" for="coalCarbonContent">含碳量 (%)</label>
+                                            <input type="number" class="form-control" id="coalCarbonContent" value="78.0" step="0.01" min="0" max="100">
+                                        </div>
+                                        <div class="col-md-6 col-xl-12">
+                                            <label class="form-label" for="coalHydrogenContent">含氢量 (%)</label>
+                                            <input type="number" class="form-control" id="coalHydrogenContent" value="3.5" step="0.01" min="0" max="100">
+                                        </div>
+                                        <div class="col-md-6 col-xl-12">
+                                            <label class="form-label" for="coalAshContent">灰分 (%)</label>
+                                            <input type="number" class="form-control" id="coalAshContent" value="12.0" step="0.01" min="0" max="100">
+                                        </div>
+                                        <div class="col-md-6 col-xl-12">
+                                            <label class="form-label" for="coalSiO2Content">灰分中 SiO₂ 含量 (%)</label>
+                                            <input type="number" class="form-control" id="coalSiO2Content" value="48.0" step="0.01" min="0" max="100">
+                                        </div>
+                                        <div class="col-md-6 col-xl-12">
+                                            <label class="form-label" for="coalDecompositionHeat">分解热 (kcal/kg)</label>
+                                            <input type="number" class="form-control" id="coalDecompositionHeat" value="220" step="1" min="0">
+                                        </div>
+                                        <div class="col-md-6 col-xl-12">
+                                            <label class="form-label" for="coalPhysicalHeat">物理热 (kcal/kg)</label>
+                                            <input type="number" class="form-control" id="coalPhysicalHeat" value="450" step="1" min="0">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="ratio-parameter-panel">
+                                    <div class="ratio-parameter-panel__header">
+                                        <i class="bi bi-fire"></i>
+                                        <div>
+                                            <h2>焦炭参数</h2>
+                                            <p>用于计算焦炭有效碳和造渣碳耗。</p>
+                                        </div>
+                                    </div>
+                                    <div class="row g-3">
+                                        <div class="col-md-4 col-xl-12">
+                                            <label class="form-label" for="cokeCarbonContent">含碳量 (%)</label>
+                                            <input type="number" class="form-control" id="cokeCarbonContent" value="86.0" step="0.01" min="0" max="100">
+                                        </div>
+                                        <div class="col-md-4 col-xl-12">
+                                            <label class="form-label" for="cokeAshContent">灰分 (%)</label>
+                                            <input type="number" class="form-control" id="cokeAshContent" value="11.0" step="0.01" min="0" max="100">
+                                        </div>
+                                        <div class="col-md-4 col-xl-12">
+                                            <label class="form-label" for="cokeSiO2Content">灰分中 SiO₂ 含量 (%)</label>
+                                            <input type="number" class="form-control" id="cokeSiO2Content" value="52.0" step="0.01" min="0" max="100">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="ratio-parameter-panel">
+                                    <div class="ratio-parameter-panel__header">
+                                        <i class="bi bi-gear-wide-connected"></i>
+                                        <div>
+                                            <h2>高炉工艺参数</h2>
+                                            <p>用于热平衡、气体利用率和炉渣修正。</p>
+                                        </div>
+                                    </div>
+                                    <div class="row g-3">
+                                        <div class="col-md-6 col-xl-12">
+                                            <label class="form-label" for="gasUtilization">煤气利用率</label>
+                                            <input type="number" class="form-control" id="gasUtilization" value="0.4444" step="0.0001" min="0" max="1">
+                                        </div>
+                                        <div class="col-md-6 col-xl-12">
+                                            <label class="form-label" for="slagBasicity">炉渣碱度</label>
+                                            <input type="number" class="form-control" id="slagBasicity" value="1.15" step="0.01" min="0">
+                                        </div>
+                                        <div class="col-md-6 col-xl-12">
+                                            <label class="form-label" for="slagEnthalpy">炉渣热焓 (kJ/kg)</label>
+                                            <input type="number" class="form-control" id="slagEnthalpy" value="1800" step="1" min="0">
+                                        </div>
+                                        <div class="col-md-6 col-xl-12">
+                                            <label class="form-label" for="windTemperature">风温 (°C)</label>
+                                            <input type="number" class="form-control" id="windTemperature" value="1180" step="1" min="0">
+                                        </div>
+                                        <div class="col-md-6 col-xl-12">
+                                            <label class="form-label" for="hotBlastEnthalpy">鼓风热焓 (kJ/m³)</label>
+                                            <input type="number" class="form-control" id="hotBlastEnthalpy" value="1.5" step="0.1" min="0">
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="calculationType" id="actualCalculation" value="actual">
-                                    <label class="form-check-label" for="actualCalculation">
-                                        <strong>实际置换比计算</strong>
-                                        <div class="text-muted small">基于高炉生产实践数据，计算实际置换比</div>
-                                    </label>
+                        </section>
+
+                        <section id="actualSection" class="calculation-section" hidden>
+                            <div class="ratio-parameter-grid ratio-parameter-grid--two">
+                                <div class="ratio-parameter-panel">
+                                    <div class="ratio-parameter-panel__header">
+                                        <i class="bi bi-clipboard-data"></i>
+                                        <div>
+                                            <h2>基础生产数据</h2>
+                                            <p>以调整前后焦比和煤比变化计算基础实际置换比。</p>
+                                        </div>
+                                    </div>
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label" for="initialCokeRatio">调整前焦比 (kg/t)</label>
+                                            <input type="number" class="form-control" id="initialCokeRatio" value="400" step="0.1" min="0">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label" for="finalCokeRatio">调整后焦比 (kg/t)</label>
+                                            <input type="number" class="form-control" id="finalCokeRatio" value="370" step="0.1" min="0">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label" for="initialCoalRatio">调整前煤比 (kg/t)</label>
+                                            <input type="number" class="form-control" id="initialCoalRatio" value="150" step="0.1" min="0">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label" for="finalCoalRatio">调整后煤比 (kg/t)</label>
+                                            <input type="number" class="form-control" id="finalCoalRatio" value="180" step="0.1" min="0">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label" for="adjustmentFactor">修正系数 (kg/t)</label>
+                                            <input type="number" class="form-control" id="adjustmentFactor" value="2.5" step="0.1">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="ratio-parameter-panel">
+                                    <div class="ratio-parameter-panel__header">
+                                        <i class="bi bi-graph-up-arrow"></i>
+                                        <div>
+                                            <h2>生产因素修正</h2>
+                                            <p>启用后会考虑产量、渣比和碳效率的影响。</p>
+                                        </div>
+                                    </div>
+                                    <div class="form-check form-switch ratio-advanced-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="enableAdvancedCalculation">
+                                        <label class="form-check-label" for="enableAdvancedCalculation">
+                                            启用生产因素修正
+                                        </label>
+                                    </div>
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label" for="ironOutputChange">铁水产量变化 (t/d)</label>
+                                            <input type="number" class="form-control" id="ironOutputChange" value="50" step="1">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label" for="slagRatioChange">渣比变化 (kg/t)</label>
+                                            <input type="number" class="form-control" id="slagRatioChange" value="-10" step="0.1">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label" for="carbonEfficiencyChange">碳利用效率变化 (%)</label>
+                                            <input type="number" class="form-control" id="carbonEfficiencyChange" value="2.0" step="0.1">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </section>
+
+            <aside class="col-xl-4">
+                <div class="replacement-side-panel">
+                    <section class="card">
+                        <div class="card-header">
+                            <i class="bi bi-command me-2"></i>操作面板
+                        </div>
+                        <div class="card-body">
+                            <div class="replacement-action-stack">
+                                <button type="button" class="btn btn-primary btn-lg" id="calculateBtn">
+                                    <i class="bi bi-calculator me-2"></i>开始计算
+                                </button>
+                                <button type="button" class="btn btn-outline-info" id="loadExampleBtn">
+                                    <i class="bi bi-lightbulb me-2"></i>加载示例
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" id="resetBtn">
+                                    <i class="bi bi-arrow-clockwise me-2"></i>重置当前模式
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" id="openHistoryBtn">
+                                    <i class="bi bi-box-arrow-up-right me-2"></i>打开置换比历史
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="card">
+                        <div class="card-header">
+                            <i class="bi bi-info-circle me-2"></i>计算说明
+                        </div>
+                        <div class="card-body">
+                            <div class="history-stat-list">
+                                <div class="history-stat-item">
+                                    <span>理论模式</span>
+                                    <strong>碳平衡 + 热平衡</strong>
+                                </div>
+                                <div class="history-stat-item">
+                                    <span>实际模式</span>
+                                    <strong>焦比 / 煤比变化</strong>
+                                </div>
+                                <div class="history-stat-item">
+                                    <span>结果处理</span>
+                                    <strong>自动保存历史</strong>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </section>
                 </div>
-            </div>
+            </aside>
         </div>
 
-        <!-- 理论置换比计算参数 -->
-        <div id="theorySection" class="calculation-section">
-            <div class="row">
-                <!-- 煤粉参数 -->
-                <div class="col-lg-4 mb-4">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="bi bi-fuel-pumpfill me-2"></i>煤粉参数
-                        </div>
-                        <div class="card-body">
-                            <div class="mb-3">
-                                <label class="form-label">含碳量 (%)</label>
-                                <input type="number" class="form-control" id="coalCarbonContent" value="78.0" step="0.01" min="0" max="100">
-                                <div class="form-text">煤粉含碳量(包括挥发份的碳)</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">含氢量 (%)</label>
-                                <input type="number" class="form-control" id="coalHydrogenContent" value="3.5" step="0.01" min="0" max="100">
-                                <div class="form-text">煤粉中氢含量</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">灰分 (%)</label>
-                                <input type="number" class="form-control" id="coalAshContent" value="12.0" step="0.01" min="0" max="100">
-                                <div class="form-text">煤粉中灰分含量</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">灰分中SiO₂含量 (%)</label>
-                                <input type="number" class="form-control" id="coalSiO2Content" value="48.0" step="0.01" min="0" max="100">
-                                <div class="form-text">灰分中二氧化硅含量</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">分解热 (kcal/kg)</label>
-                                <input type="number" class="form-control" id="coalDecompositionHeat" value="220" step="1" min="0">
-                                <div class="form-text">煤粉分解热，无烟煤通常为220-240</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">物理热 (kcal/kg)</label>
-                                <input type="number" class="form-control" id="coalPhysicalHeat" value="450" step="1" min="0">
-                                <div class="form-text">加热至1500°C的物理热</div>
-                            </div>
-                        </div>
-                    </div>
+        <section class="card result-card mt-4" id="resultsSection" hidden>
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <div class="results-header-title"><i class="bi bi-bar-chart-line me-2"></i>计算结果</div>
+                    <div class="results-header-subtitle">结果已从接口返回，可导出或打印当前快照。</div>
                 </div>
-
-                <!-- 焦炭参数 -->
-                <div class="col-lg-4 mb-4">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="bi bi-fire me-2"></i>焦炭参数
-                        </div>
-                        <div class="card-body">
-                            <div class="mb-3">
-                                <label class="form-label">含碳量 (%)</label>
-                                <input type="number" class="form-control" id="cokeCarbonContent" value="86.0" step="0.01" min="0" max="100">
-                                <div class="form-text">焦炭含碳量</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">灰分 (%)</label>
-                                <input type="number" class="form-control" id="cokeAshContent" value="11.0" step="0.01" min="0" max="100">
-                                <div class="form-text">焦炭中灰分含量</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">灰分中SiO₂含量 (%)</label>
-                                <input type="number" class="form-control" id="cokeSiO2Content" value="52.0" step="0.01" min="0" max="100">
-                                <div class="form-text">灰分中二氧化硅含量</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 高炉工艺参数 -->
-                <div class="col-lg-4 mb-4">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="bi bi-gear-wide-connected me-2"></i>高炉工艺参数
-                        </div>
-                        <div class="card-body">
-                            <div class="mb-3">
-                                <label class="form-label">煤气利用率</label>
-                                <input type="number" class="form-control" id="gasUtilization" value="0.4444" step="0.0001" min="0" max="1">
-                                <div class="form-text">CO₂/(CO₂+CO)，通常为0.4-0.5</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">炉渣碱度</label>
-                                <input type="number" class="form-control" id="slagBasicity" value="1.15" step="0.01" min="0">
-                                <div class="form-text">CaO/SiO₂比值</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">炉渣热焓 (kJ/kg)</label>
-                                <input type="number" class="form-control" id="slagEnthalpy" value="1800" step="1" min="0">
-                                <div class="form-text">炉渣热焓值</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">风温 (°C)</label>
-                                <input type="number" class="form-control" id="windTemperature" value="1180" step="1" min="0">
-                                <div class="form-text">热风温度</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">鼓风热焓 (kJ/m³)</label>
-                                <input type="number" class="form-control" id="hotBlastEnthalpy" value="1.5" step="0.1" min="0">
-                                <div class="form-text">鼓风热焓值</div>
-                            </div>
-                        </div>
-                    </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-sm btn-outline-light" id="exportResultBtn">
+                        <i class="bi bi-download me-1"></i>导出
+                    </button>
+                    <button class="btn btn-sm btn-outline-light" id="printResultBtn">
+                        <i class="bi bi-printer me-1"></i>打印
+                    </button>
                 </div>
             </div>
-        </div>
+            <div class="card-body">
+                <div class="results-overview-grid results-overview-grid--ratio">
+                    <div class="result-overview-card result-overview-card--status">
+                        <div class="result-overview-card__label">结果类型</div>
+                        <div class="result-overview-card__value" id="resultTitle">置换比计算结果</div>
+                        <div class="result-overview-card__hint">根据当前计算模式自动切换。</div>
+                    </div>
+                    <div class="result-overview-card">
+                        <div class="result-overview-card__label">置换比</div>
+                        <div class="result-overview-card__value" id="mainResultValue">--</div>
+                        <div class="result-overview-card__hint">保留 6 位小数，便于工艺对比。</div>
+                    </div>
+                    <div class="result-overview-card">
+                        <div class="result-overview-card__label">计算状态</div>
+                        <div class="result-overview-card__value is-success">已完成</div>
+                        <div class="result-overview-card__hint">接口返回成功并写入历史。</div>
+                    </div>
+                    <div class="result-overview-card">
+                        <div class="result-overview-card__label">后续动作</div>
+                        <div class="result-overview-card__value">复核明细</div>
+                        <div class="result-overview-card__hint">建议检查贡献图和参数明细。</div>
+                    </div>
+                </div>
 
-        <!-- 实际置换比计算参数 -->
-        <div id="actualSection" class="calculation-section" style="display: none;">
-            <div class="row">
-                <!-- 基本生产数据 -->
-                <div class="col-lg-6 mb-4">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="bi bi-clipboard-data me-2"></i>基本生产数据
+                <div class="row g-4">
+                    <div class="col-lg-8">
+                        <div class="result-section h-100">
+                            <div class="result-section__header">
+                                <div>
+                                    <div class="result-section__eyebrow">Calculation Details</div>
+                                    <h2 class="h5 mb-0">详细计算过程</h2>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-striped result-kpi-table" id="calculationDetailsTable">
+                                    <tbody></tbody>
+                                </table>
+                            </div>
                         </div>
-                        <div class="card-body">
-                            <div class="mb-3">
-                                <label class="form-label">调整前焦比 (kg/t)</label>
-                                <input type="number" class="form-control" id="initialCokeRatio" value="400" step="0.1" min="0">
-                                <div class="form-text">喷煤前的焦比</div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="result-section h-100">
+                            <div class="result-section__header">
+                                <div>
+                                    <div class="result-section__eyebrow">Contribution</div>
+                                    <h2 class="h5 mb-0">参数贡献图</h2>
+                                </div>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">调整后焦比 (kg/t)</label>
-                                <input type="number" class="form-control" id="finalCokeRatio" value="370" step="0.1" min="0">
-                                <div class="form-text">喷煤后的焦比</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">调整前煤比 (kg/t)</label>
-                                <input type="number" class="form-control" id="initialCoalRatio" value="150" step="0.1" min="0">
-                                <div class="form-text">调整前的煤比</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">调整后煤比 (kg/t)</label>
-                                <input type="number" class="form-control" id="finalCoalRatio" value="180" step="0.1" min="0">
-                                <div class="form-text">调整后的煤比</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">修正系数 (kg/t)</label>
-                                <input type="number" class="form-control" id="adjustmentFactor" value="2.5" step="0.1">
-                                <div class="form-text">系统性偏差修正</div>
+                            <div class="chart-container mb-0">
+                                <canvas id="contributionChart" width="300" height="300"></canvas>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- 高级生产数据 -->
-                <div class="col-lg-6 mb-4">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="bi bi-graph-up me-2"></i>高级生产数据 (可选)
-                        </div>
-                        <div class="card-body">
-                            <div class="mb-3">
-                                <label class="form-label">铁水产量变化 (吨/天)</label>
-                                <input type="number" class="form-control" id="ironOutputChange" value="50" step="1">
-                                <div class="form-text">正值表示增产，负值表示减产</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">渣比变化 (kg/t)</label>
-                                <input type="number" class="form-control" id="slagRatioChange" value="-10" step="0.1">
-                                <div class="form-text">正值表示渣比增加，负值表示减少</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">碳利用效率变化 (%)</label>
-                                <input type="number" class="form-control" id="carbonEfficiencyChange" value="2.0" step="0.1">
-                                <div class="form-text">碳利用效率变化百分比</div>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="enableAdvancedCalculation">
-                                <label class="form-check-label" for="enableAdvancedCalculation">
-                                    考虑生产因素修正
-                                </label>
-                                <div class="form-text">启用后将考虑产量、渣比、碳效率等因素</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 计算按钮 -->
-        <div class="row mb-4">
-            <div class="col-md-12 text-center">
-                <button type="button" class="btn btn-primary btn-lg me-3" id="calculateBtn">
-                    <i class="bi bi-calculator me-2"></i>开始计算
-                </button>
-                <button type="button" class="btn btn-outline-secondary btn-lg me-3" id="resetBtn">
-                    <i class="bi bi-arrow-clockwise me-2"></i>重置参数
-                </button>
-                <button type="button" class="btn btn-outline-info btn-lg" id="loadExampleBtn">
-                    <i class="bi bi-lightbulb me-2"></i>加载示例
-                </button>
-            </div>
-        </div>
-
-        <!-- 计算结果展示 -->
-        <div class="row mb-4" id="resultsSection" style="display: none;">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span><i class="bi bi-bar-chart-line me-2"></i>计算结果</span>
+                <section id="theoryResults" class="ratio-result-analysis theory-only mt-4" hidden>
+                    <div class="ratio-analysis-header">
+                        <i class="bi bi-diagram-3"></i>
                         <div>
-                            <button class="btn btn-sm btn-outline-primary me-2" id="exportResultBtn">
-                                <i class="bi bi-download me-1"></i>导出结果
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" id="printResultBtn">
-                                <i class="bi bi-printer me-1"></i>打印结果
-                            </button>
+                            <h2>理论计算分析</h2>
+                            <p>拆解碳量平衡和热量平衡的关键贡献。</p>
                         </div>
                     </div>
-                    <div class="card-body">
-                        <!-- 主要结果 -->
-                        <div class="row mb-4">
-                            <div class="col-md-12">
-                                <div class="alert alert-success text-center" id="mainResult">
-                                    <h4 class="mb-0">
-                                        <i class="bi bi-trophy me-2"></i>
-                                        <span id="resultTitle">置换比计算结果</span>: 
-                                        <span class="fw-bold text-primary" id="mainResultValue">--</span>
-                                    </h4>
-                                </div>
+                    <div class="history-detail-grid">
+                        <div class="history-detail-card">
+                            <h6>碳量平衡分析</h6>
+                            <div class="history-stat-list">
+                                <div class="history-stat-item"><span>煤粉有效碳量</span><strong id="effectiveCoalCarbon">--</strong></div>
+                                <div class="history-stat-item"><span>焦炭有效碳量</span><strong id="effectiveCokeCarbon">--</strong></div>
+                                <div class="history-stat-item"><span>氢节约碳量</span><strong id="hydrogenSavingCarbon">--</strong></div>
+                                <div class="history-stat-item"><span>造渣耗碳量</span><strong id="slagConsumingCarbon">--</strong></div>
                             </div>
                         </div>
-
-                        <!-- 详细计算过程 -->
-                        <div class="row">
-                            <div class="col-lg-8 mb-4">
-                                <h5><i class="bi bi-list-ol me-2"></i>详细计算过程</h5>
-                                <div class="table-responsive">
-                                    <table class="table table-striped" id="calculationDetailsTable">
-                                        <tbody>
-                                            <!-- 计算详情将通过JavaScript填充 -->
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <div class="col-lg-4 mb-4">
-                                <h5><i class="bi bi-pie-chart me-2"></i>参数贡献图</h5>
-                                <div class="chart-container">
-                                    <canvas id="contributionChart" width="300" height="300"></canvas>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 理论计算特有的结果 -->
-                        <div id="theoryResults" class="theory-only" style="display: none;">
-                            <hr>
-                            <h5><i class="bi bi-gear me-2"></i>理论计算分析</h5>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <h6>碳量平衡分析</h6>
-                                    <ul class="list-unstyled">
-                                        <li><strong>煤粉有效碳量:</strong> <span id="effectiveCoalCarbon">--</span></li>
-                                        <li><strong>焦炭有效碳量:</strong> <span id="effectiveCokeCarbon">--</span></li>
-                                        <li><strong>氢节约碳量:</strong> <span id="hydrogenSavingCarbon">--</span></li>
-                                        <li><strong>造渣耗碳量:</strong> <span id="slagConsumingCarbon">--</span></li>
-                                    </ul>
-                                </div>
-                                <div class="col-md-6">
-                                    <h6>热量平衡分析</h6>
-                                    <ul class="list-unstyled">
-                                        <li><strong>碳燃烧热:</strong> <span id="carbonBurningHeat">--</span> kJ/kg</li>
-                                        <li><strong>分解热消耗:</strong> <span id="decompositionHeatConsumption">--</span> kJ/kg</li>
-                                        <li><strong>物理热消耗:</strong> <span id="physicalHeatConsumption">--</span> kJ/kg</li>
-                                        <li><strong>氢气替代热:</strong> <span id="hydrogenReplacementHeat">--</span> kJ/kg</li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 实际计算特有的结果 -->
-                        <div id="actualResults" class="actual-only" style="display: none;">
-                            <hr>
-                            <h5><i class="bi bi-graph-up me-2"></i>实际生产分析</h5>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <h6>生产指标变化</h6>
-                                    <ul class="list-unstyled">
-                                        <li><strong>焦比减少:</strong> <span id="cokeRatioReduction">--</span> kg/t</li>
-                                        <li><strong>煤比增加:</strong> <span id="coalRatioIncrease">--</span> kg/t</li>
-                                        <li><strong>基本置换比:</strong> <span id="basicReplacementRatio">--</span></li>
-                                        <li><strong>修正后置换比:</strong> <span id="correctedReplacementRatio">--</span></li>
-                                    </ul>
-                                </div>
-                                <div class="col-md-6">
-                                    <h6>修正因子影响</h6>
-                                    <ul class="list-unstyled">
-                                        <li><strong>产量修正:</strong> <span id="outputCorrection">--</span></li>
-                                        <li><strong>渣比修正:</strong> <span id="slagCorrection">--</span></li>
-                                        <li><strong>碳效率修正:</strong> <span id="efficiencyCorrection">--</span></li>
-                                        <li><strong>总修正量:</strong> <span id="totalCorrection">--</span></li>
-                                    </ul>
-                                </div>
+                        <div class="history-detail-card">
+                            <h6>热量平衡分析</h6>
+                            <div class="history-stat-list">
+                                <div class="history-stat-item"><span>碳燃烧热</span><strong><span id="carbonBurningHeat">--</span> kJ/kg</strong></div>
+                                <div class="history-stat-item"><span>分解热消耗</span><strong><span id="decompositionHeatConsumption">--</span> kJ/kg</strong></div>
+                                <div class="history-stat-item"><span>物理热消耗</span><strong><span id="physicalHeatConsumption">--</span> kJ/kg</strong></div>
+                                <div class="history-stat-item"><span>氢气替代热</span><strong><span id="hydrogenReplacementHeat">--</span> kJ/kg</strong></div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </section>
+
+                <section id="actualResults" class="ratio-result-analysis actual-only mt-4" hidden>
+                    <div class="ratio-analysis-header">
+                        <i class="bi bi-graph-up-arrow"></i>
+                        <div>
+                            <h2>实际生产分析</h2>
+                            <p>展示焦比、煤比变化和修正因子的影响。</p>
+                        </div>
+                    </div>
+                    <div class="history-detail-grid">
+                        <div class="history-detail-card">
+                            <h6>生产指标变化</h6>
+                            <div class="history-stat-list">
+                                <div class="history-stat-item"><span>焦比减少</span><strong><span id="cokeRatioReduction">--</span> kg/t</strong></div>
+                                <div class="history-stat-item"><span>煤比增加</span><strong><span id="coalRatioIncrease">--</span> kg/t</strong></div>
+                                <div class="history-stat-item"><span>基础置换比</span><strong id="basicReplacementRatio">--</strong></div>
+                                <div class="history-stat-item"><span>修正后置换比</span><strong id="correctedReplacementRatio">--</strong></div>
+                            </div>
+                        </div>
+                        <div class="history-detail-card">
+                            <h6>修正因子影响</h6>
+                            <div class="history-stat-list">
+                                <div class="history-stat-item"><span>产量修正</span><strong id="outputCorrection">--</strong></div>
+                                <div class="history-stat-item"><span>渣比修正</span><strong id="slagCorrection">--</strong></div>
+                                <div class="history-stat-item"><span>碳效率修正</span><strong id="efficiencyCorrection">--</strong></div>
+                                <div class="history-stat-item"><span>总修正量</span><strong id="totalCorrection">--</strong></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
             </div>
-        </div>
+        </section>
+    </main>
 
-        <!-- 历史入口 -->
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span><i class="bi bi-clock-history me-2"></i>历史记录</span>
-                        <button class="btn btn-sm btn-outline-primary" id="openHistoryBtn">
-                            <i class="bi bi-box-arrow-up-right me-1"></i>查看置换比历史
-                        </button>
-                    </div>
-                    <div class="card-body">
-                        <p class="mb-2">本页只负责置换比计算与结果分析，历史记录已统一迁移到独立页面集中查阅。</p>
-                        <p class="text-muted mb-3">你可以在历史页面按时间查看理论置换比、基础实际置换比和高级实际置换比的数据库记录，并展开详情对比输入参数与结果快照。</p>
-                        <a href="/optimization_history/replacement_ratio" class="btn btn-outline-primary">
-                            <i class="bi bi-clock-history me-2"></i>前往置换比历史页面
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 页脚 -->
     <footer class="footer py-4 mt-5">
         <div class="container">
-            <div class="row">
+            <div class="row g-4">
                 <div class="col-md-6">
                     <h5>煤种数据库管理及配煤优化系统</h5>
-                    <p>基于冶金理论的智能置换比计算系统，提供精确的理论和实际置换比计算。</p>
+                    <p>面向喷煤配煤场景的数据维护、优化计算、置换比计算和历史追溯工作台。</p>
                 </div>
                 <div class="col-md-3">
-                    <h5>快速链接</h5>
+                    <h5>快速入口</h5>
                     <ul class="list-unstyled">
-                        <li><a href="/" class="text-white">首页</a></li>
-                        <li><a href="#" class="text-white">煤种数据</a></li>
+                        <li><a href="/coal_management" class="text-white">煤种数据</a></li>
+                        <li><a href="/smart_blending" class="text-white">智能混煤</a></li>
                         <li><a href="/replacement_ratio" class="text-white">置换比计算</a></li>
-                        <li><a href="#" class="text-white">系统设置</a></li>
+                        <li><a href="/optimization_history/replacement_ratio" class="text-white">置换比历史</a></li>
                     </ul>
                 </div>
                 <div class="col-md-3">
-                    <h5>联系我们</h5>
+                    <h5>数据链路</h5>
                     <ul class="list-unstyled">
-                        <li><i class="bi bi-envelope me-2"></i>support@coalblending.com</li>
-                        <li><i class="bi bi-telephone me-2"></i>400-123-4567</li>
+                        <li><i class="bi bi-database-check me-2"></i>SQLite 持久化</li>
+                        <li><i class="bi bi-clock-history me-2"></i>自动保存历史</li>
                     </ul>
-                </div>
-            </div>
-            <hr class="my-4 bg-light">
-            <div class="row">
-                <div class="col-md-12 text-center">
-                    <p class="mb-0">© 2025 煤种数据库管理及配煤优化系统 版权所有</p>
                 </div>
             </div>
         </div>
     </footer>
 
-    <!-- JavaScript 库 -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="replacementRatioToastContainer"></div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='js/replacement_ratio.js') }}"></script>

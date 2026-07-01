@@ -35,6 +35,7 @@ def create_app(config_name: str | None = None) -> Flask:
 
     register_blueprints(app)
     register_error_handlers(app)
+    _register_startup_hooks(app)
 
     return app
 
@@ -44,3 +45,13 @@ def _init_extensions(app: Flask) -> None:
     db.init_app(app)
     migrate.init_app(app, db)
     cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
+
+
+def _register_startup_hooks(app: Flask) -> None:
+    """注册轻量启动钩子，确保本地 SQLite 可直接使用。"""
+
+    @app.before_request
+    def _ensure_sqlite_seeded() -> None:
+        from app.services.coal_data_service import ensure_coal_data_initialized
+
+        ensure_coal_data_initialized()

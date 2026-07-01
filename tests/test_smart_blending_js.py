@@ -89,7 +89,6 @@ global.bootstrap = {
 };
 global.Chart = function() { return { destroy() {}, update() {} }; };
 global.fetch = async () => ({ ok: true, json: async () => ({ status: 'success', data: [] }) });
-    global.alert = function() {};
     global.navigator = { clipboard: { writeText: async () => {} } };
     """
     with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False, encoding='utf-8', dir=Path.cwd()) as temp_file:
@@ -159,10 +158,12 @@ hideLoadingState();
 def test_view_results_button_warns_until_result_exists():
     extra_script = r"""
 let warningMessage = '';
-global.alert = function(message) { warningMessage = message; };
+const originalWarn = console.warn;
+console.warn = function(message) { warningMessage = message; };
 document.getElementById('resultsSection').classList.add('d-none');
 
 scrollToResultsSection();
+console.warn = originalWarn;
 
 if (!warningMessage) {
   throw new Error('View results did not warn when no result exists');
