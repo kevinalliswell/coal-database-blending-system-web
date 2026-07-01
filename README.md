@@ -101,7 +101,13 @@ flask --app run.py db upgrade
 - `POST /api/optimization/export/current` · `GET /api/optimization/export/<id>` · `POST /api/replacement_ratio/export`
 - `GET /health`
 
-完整契约见 [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)，前端说明见 [`frontend/README.md`](frontend/README.md)。
+## 文档
+
+- [架构与技术栈说明](docs/ARCHITECTURE.md) —— 系统架构、技术选型、数据流与设计取舍
+- [API 接口文档](docs/API_REFERENCE.md) —— 全部 `/api` 端点的请求/响应契约
+- [部署文档](docs/DEPLOYMENT.md) —— Docker、环境变量、数据库、CI/自动发布
+- [用户手册](docs/USER_GUIDE.md) —— 面向配煤工程师的分页操作指引
+- [前端说明](frontend/README.md) —— 前端技术栈、主题与开发方式
 
 ## 发布
 
