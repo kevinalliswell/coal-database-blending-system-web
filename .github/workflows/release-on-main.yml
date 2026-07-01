@@ -23,10 +23,11 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # No `cache: pip` here: this job installs no pip deps (semantic-release
+      # manages its own env), so the cache-save post-step would fail the job.
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
 
       - name: Python Semantic Release
         id: release
