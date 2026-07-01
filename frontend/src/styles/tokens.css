@@ -1,0 +1,177 @@
+/* ============================================================
+   熔炉控制台 · Furnace Control Console — Design Tokens
+   An industrial-instrument aesthetic: molten amber on coal-black,
+   cool cyan for measurement data, hairline structure, ember glow.
+   ============================================================ */
+
+:root {
+  /* ---- Coal-black substrate ---- */
+  --coal-950: #08080a;
+  --coal-900: #0b0b0e;
+  --coal-850: #0f0f13;
+  --coal-800: #141419;
+  --coal-750: #1a1a21;
+
+  /* ---- Raised instrument surfaces ---- */
+  --surface: #15151b;
+  --surface-2: #1b1b23;
+  --surface-3: #23232e;
+  --surface-inset: #0e0e12;
+
+  /* ---- Hairlines / structure ---- */
+  --line: rgba(240, 232, 214, 0.075);
+  --line-2: rgba(240, 232, 214, 0.12);
+  --line-strong: rgba(240, 232, 214, 0.2);
+  --grid-line: rgba(240, 232, 214, 0.028);
+
+  /* ---- Molten accents (heat / energy / primary) ---- */
+  --ember-core: #ff5e13;
+  --ember: #ff7a1a;
+  --ember-bright: #ff9d3c;
+  --ember-glow: #ffb547;
+  --ember-soft: rgba(255, 122, 26, 0.14);
+  --ember-line: rgba(255, 122, 26, 0.42);
+  --molten: linear-gradient(135deg, #ffb547 0%, #ff7a1a 45%, #ff5e13 100%);
+  --molten-soft: linear-gradient(135deg, rgba(255, 181, 71, 0.16), rgba(255, 94, 19, 0.08));
+
+  /* ---- Instrument cyan (measurement / data / secondary) ---- */
+  --cyan: #38e1cf;
+  --cyan-bright: #6ff2e4;
+  --cyan-dim: #1c8f85;
+  --cyan-soft: rgba(56, 225, 207, 0.12);
+  --cyan-line: rgba(56, 225, 207, 0.4);
+
+  /* ---- Status ---- */
+  --mint: #46dd9a;
+  --mint-soft: rgba(70, 221, 154, 0.13);
+  --amber: #ffc74d;
+  --amber-soft: rgba(255, 199, 77, 0.14);
+  --danger: #ff4d4d;
+  --danger-soft: rgba(255, 77, 77, 0.14);
+  --violet: #a98bff;
+
+  /* ---- Ink ---- */
+  --ink: #f4f0e6;
+  --ink-soft: #cbc6b9;
+  --ink-mute: #928d81;
+  --ink-faint: #605c53;
+  --ink-on-molten: #180a02;
+
+  /* ---- Typography ---- */
+  --font-display: 'Chakra Petch', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  --font-body: 'Chakra Petch', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', monospace;
+
+  /* ---- Radii (industrial = restrained) ---- */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r: 9px;
+  --r-lg: 13px;
+  --r-xl: 18px;
+  --r-pill: 999px;
+
+  /* ---- Elevation / glow ---- */
+  --shadow-panel: 0 24px 60px -28px rgba(0, 0, 0, 0.85);
+  --shadow-float: 0 30px 70px -20px rgba(0, 0, 0, 0.9);
+  --glow-ember: 0 0 22px -2px rgba(255, 94, 19, 0.55);
+  --glow-cyan: 0 0 22px -2px rgba(56, 225, 207, 0.45);
+  --inset-top: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  /* ---- Semantic surface tokens (theme-swappable) ---- */
+  --topbar-from: rgba(15, 15, 19, 0.9);
+  --topbar-to: rgba(11, 11, 14, 0.6);
+  --selection-bg: rgba(255, 122, 26, 0.32);
+  --selection-fg: #ffffff;
+  --scrollbar-thumb: rgba(240, 232, 214, 0.16);
+  --scrollbar-thumb-hover: rgba(255, 122, 26, 0.4);
+  --panel-sheen: rgba(255, 255, 255, 0.018);
+  --row-hover: rgba(255, 255, 255, 0.022);
+  --spinner-track: rgba(255, 255, 255, 0.18);
+
+  /* ---- Motion ---- */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur: 0.22s;
+
+  /* ---- Layout ---- */
+  --rail-w: 78px;
+  --content-max: 1440px;
+}
+
+/* ============================================================
+   Foundry Daylight — light theme override
+   Keeps the furnace identity: warm ash-paper substrate, molten
+   amber deepened to a burnt-orange "hot ingot on paper", steel-teal
+   data color, dark-translucent hairlines, soft neutral shadows.
+   ============================================================ */
+[data-theme='light'] {
+  /* substrate: coal-black strata → warm ash-paper / bone (light→dark) */
+  --coal-950: #e6dfd0;
+  --coal-900: #efe8db;
+  --coal-850: #f4efe4;
+  --coal-800: #f7f2e9;
+  --coal-750: #ece6d9;
+
+  /* raised instrument surfaces */
+  --surface: #faf7f0;
+  --surface-2: #f5f0e6;
+  --surface-3: #efe9dc;
+  --surface-inset: #e9e2d3;
+
+  /* hairlines → warm-black translucent */
+  --line: rgba(30, 22, 10, 0.1);
+  --line-2: rgba(30, 22, 10, 0.16);
+  --line-strong: rgba(30, 22, 10, 0.26);
+  --grid-line: rgba(30, 22, 10, 0.05);
+
+  /* molten amber deepened for legibility on light; gradient stays hot */
+  --ember-core: #c2400a;
+  --ember: #b83c06;
+  --ember-bright: #d1560f;
+  --ember-glow: #c2400a; /* used as TEXT accent → deepened for contrast */
+  --ember-soft: rgba(200, 64, 8, 0.12);
+  --ember-line: rgba(184, 60, 6, 0.42);
+  --molten: linear-gradient(135deg, #ffb547 0%, #ff8a2b 48%, #f26a12 100%);
+  --molten-soft: linear-gradient(135deg, rgba(255, 181, 71, 0.28), rgba(226, 90, 10, 0.14));
+
+  /* instrument cyan → steel-teal, deepened for data legibility on white */
+  --cyan: #0f7c74;
+  --cyan-bright: #0c8577; /* used as TEXT accent → deepened */
+  --cyan-dim: #0a5d57;
+  --cyan-soft: rgba(15, 124, 116, 0.12);
+  --cyan-line: rgba(15, 124, 116, 0.4);
+
+  /* status deepened for white */
+  --mint: #0d8f5a;
+  --mint-soft: rgba(13, 143, 90, 0.14);
+  --amber: #a86b00;
+  --amber-soft: rgba(168, 107, 0, 0.16);
+  --danger: #cf2b2b;
+  --danger-soft: rgba(207, 43, 43, 0.13);
+  --violet: #6a4fd0;
+
+  /* ink → warm near-black on paper */
+  --ink: #1a150e;
+  --ink-soft: #463e31;
+  --ink-mute: #6b6355;
+  --ink-faint: #8f8879;
+  --ink-on-molten: #2a1204;
+
+  /* glows pulled way down; soft warm-neutral drop shadows */
+  --shadow-panel: 0 18px 40px -24px rgba(40, 26, 8, 0.28);
+  --shadow-float: 0 24px 56px -22px rgba(40, 26, 8, 0.34);
+  --glow-ember: 0 0 16px -6px rgba(184, 60, 6, 0.3);
+  --glow-cyan: 0 0 16px -6px rgba(15, 124, 116, 0.24);
+  --inset-top: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+
+  /* semantic surfaces */
+  --topbar-from: rgba(247, 243, 235, 0.9);
+  --topbar-to: rgba(250, 247, 240, 0.6);
+  --selection-bg: rgba(200, 64, 8, 0.22);
+  --selection-fg: #1a150e;
+  --scrollbar-thumb: rgba(30, 22, 10, 0.22);
+  --scrollbar-thumb-hover: rgba(184, 60, 6, 0.45);
+  --panel-sheen: transparent;
+  --row-hover: rgba(30, 22, 10, 0.045);
+  --spinner-track: rgba(30, 22, 10, 0.14);
+}
