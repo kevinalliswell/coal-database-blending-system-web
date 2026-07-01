@@ -1,6 +1,35 @@
 # CHANGELOG
 
 
+## v1.0.0 (2026-07-01)
+
+### Features
+
+- Rebuild frontend as Vite/React SPA with dual-theme console
+  ([`2ac8218`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/2ac8218f391890d3f0a87e95f92bc7d57572ecc3))
+
+Replace the server-rendered Jinja/Bootstrap frontend with a Vite + React + TypeScript single-page
+  app (frontend/): a dark "Furnace Console" and light "Foundry Daylight" theme with one-click
+  toggle, TanStack Query data layer, ECharts visualizations (interactive Pareto frontier), and a
+  mock engine for backend-free demos. Flask now serves the built SPA (frontend/dist) via a catch-all
+  route; the /api surface is unchanged.
+
+Adds a full-stack Dockerfile, docker-compose, and extends the release workflow to build the image,
+  attach it to the GitHub Release, and push to GHCR.
+
+BREAKING CHANGE: the old server-rendered pages (templates/, static/js, static/css) are removed; page
+  routes now serve the single-page app instead of Jinja templates, so deployments must build
+  frontend/dist or run the Docker image.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+
+### Breaking Changes
+
+- The old server-rendered pages (templates/, static/js, static/css) are removed; page routes now
+  serve the single-page app instead of Jinja templates, so deployments must build frontend/dist or
+  run the Docker image.
+
+
 ## v0.2.0 (2026-06-29)
 
 ### Features
