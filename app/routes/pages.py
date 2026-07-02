@@ -86,7 +86,7 @@ def spa(path: str = ""):
         candidate = os.path.normpath(os.path.join(spa_dir, path))
         # 防目录穿越，并且仅在文件真实存在时直出。
         if candidate.startswith(os.path.normpath(spa_dir)) and os.path.isfile(candidate):
-            rel = os.path.relpath(candidate, spa_dir)
+            rel = os.path.relpath(candidate, spa_dir).replace("\\", "/")
             return send_from_directory(spa_dir, rel)
 
     index_path = os.path.join(spa_dir, "index.html")
