@@ -1,6 +1,44 @@
 # CHANGELOG
 
 
+## v1.0.1 (2026-07-02)
+
+### Bug Fixes
+
+- Serve SPA assets on Windows
+  ([`154bbda`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/154bbda6bb42d62c267f559970d1637b77e90ce2))
+
+### Continuous Integration
+
+- Drop pip cache from release workflow to fix failing post-step
+  ([`389b191`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/389b1913032755c32208c9bb38d22ab70d2d343d))
+
+The release job installs no pip dependencies (python-semantic-release manages its own environment),
+  so `cache: pip` on setup-python had nothing to cache and its cache-save post-step failed the whole
+  job — every release run showed red despite the release and artifacts succeeding. Removing the
+  cache directive makes the pipeline report accurately.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+
+### Documentation
+
+- Add architecture, deployment, and user guide; optimize API reference
+  ([`a0fdf73`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/a0fdf736ad88709ef395e381dac05c8df1d836f1))
+
+- docs/ARCHITECTURE.md: system architecture (SPA + Flask single container), tech stack, request
+  flow, backend layering, data model, NSGA-II overview, frontend architecture, directory tree,
+  design trade-offs (with a diagram). - docs/DEPLOYMENT.md: Docker/compose/GHCR, env vars,
+  SQLite/MySQL + migrations, local dev, gunicorn + nginx, CI and the semantic-release pipeline. -
+  docs/USER_GUIDE.md: per-page operator guide (dashboard, coal DB, smart blending, replacement
+  ratio, history), theme toggle and demo mode. - docs/API_REFERENCE.md: rewritten and verified
+  against the actual routes and model serializers; every /api endpoint with request/response
+  contracts. - README.md: documentation index.
+
+Verified against the codebase via an adversarial review pass.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+
+
 ## v1.0.0 (2026-07-01)
 
 ### Features
