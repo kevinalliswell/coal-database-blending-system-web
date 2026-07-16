@@ -28,7 +28,7 @@
 ├── backend/                 # 业务路由、算法服务与工具实现
 ├── data/                    # 样例种子数据与运行期数据目录
 ├── migrations/              # 数据库迁移
-├── static/                  # 静态图片与图标
+├── static/                  # favicon 等静态资源
 ├── Dockerfile               # 全栈单镜像（构建 SPA + Python 运行时）
 ├── docker-compose.yml
 ├── run.py / wsgi.py         # 本地开发 / WSGI 入口

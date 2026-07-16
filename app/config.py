@@ -41,7 +41,6 @@ class Config:
     UPLOAD_FOLDER = str(DATA_PATH / "uploads")
     COAL_DATA_PATH = str(DATA_PATH / "test_coal_datas.csv")
     DATABASE_PATH = str(DEFAULT_DB_PATH)
-    STATIC_IMAGES_DIR = str(BASE_DIR_PATH / "static" / "images")
     # 构建后的单页应用目录（frontend/dist）。生产由 Flask 直接托管此目录。
     SPA_DIST_DIR = str(BASE_DIR_PATH / "frontend" / "dist")
 
@@ -57,7 +56,7 @@ class Config:
     @classmethod
     def init_app(cls, app) -> None:
         """初始化应用级目录和日志。"""
-        for path in (cls.DATA_DIR, cls.UPLOAD_FOLDER, cls.STATIC_IMAGES_DIR):
+        for path in (cls.DATA_DIR, cls.UPLOAD_FOLDER):
             os.makedirs(path, exist_ok=True)
 
         logging.basicConfig(level=cls.LOG_LEVEL)

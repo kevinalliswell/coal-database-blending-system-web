@@ -1,13 +1,12 @@
 # backend 兼容层说明
 
-`backend/` 目录保留了项目原有业务模块，并继续承载部分已注册的路由、算法服务和工具函数。当前项目入口已经统一到 `app.create_app()`，本地运行请使用仓库根目录的 `run.py` 或 `wsgi.py`，不要再直接运行 `backend/app.py`。
+`backend/` 目录保留了项目原有业务模块，并继续承载部分已注册的路由、算法服务和工具函数。当前项目入口已经统一到 `app.create_app()`，本地运行请使用仓库根目录的 `run.py` 或 `wsgi.py`；历史入口 `backend/app.py` 与配置兼容层 `backend/config.py` 已确认无引用并删除。
 
 ## 当前职责
 
 - `backend/routes/`：煤种管理、智能混煤、置换比和报表导出的 API 蓝图实现。
-- `backend/service/`：智能混煤算法、置换比计算和评价服务。
+- `backend/service/`：智能混煤算法、置换比计算服务。
 - `backend/utils/`：上传文件读取、Excel 报告、参数校验等通用工具。
-- `backend/config.py`：兼容导出 `app.config` 中的配置类。
 
 `app/` 目录负责应用工厂、扩展初始化、SQLAlchemy 模型、迁移、页面路由和兼容导出。`app/routes/*.py` 会注册或转发这些业务蓝图。
 

@@ -14,7 +14,7 @@ flowchart LR
     G --> F["Flask create_app()"]
 
     subgraph Flask 应用
-      F --> P["pages 蓝图<br/>catch-all → frontend/dist<br/>/health · /images · /favicon"]
+      F --> P["pages 蓝图<br/>catch-all → frontend/dist<br/>/health · /favicon"]
       F --> A["/api/* 业务蓝图<br/>coal · optimization<br/>replacement_ratio · reports"]
     end
 
@@ -82,7 +82,7 @@ flowchart LR
   - `app/routes/coal_management.py`、`optimization.py`、`replacement_ratio.py`、`reports.py` 都是**兼容导出层**——只做 `from backend.routes.* import <blueprint>` 的再导出，真实实现位于 `backend/routes/`。`app/routes/pages.py` 与 `errors.py` 则是 SPA 托管与统一错误处理的真实实现。
 - **`backend/`（业务路由 / 算法服务 / 工具）**
   - `backend/routes/` 是各蓝图端点的实现（煤种 CRUD、优化、置换比、报表）。
-  - `backend/service/` 是算法核心：`blending_service.py`（NSGA-II 多目标混煤）、`replacement_ratio_service.py`（理论/实际置换比）、`ustb_evaluation.py`。
+  - `backend/service/` 是算法核心：`blending_service.py`（NSGA-II 多目标混煤）、`replacement_ratio_service.py`（理论/实际置换比）。
   - `backend/utils/` 提供 Excel/文件/报表/校验工具。
 
 **SQLite 播种机制**：应用注册了 `before_request` 钩子调用 `ensure_coal_data_initialized()`（[`app/services/coal_data_service.py`](../app/services/coal_data_service.py)）。它先 `db.create_all()` 建表，若 `Coal` 表为空则从 `data/test_coal_datas.csv` 读入并导入（保留 CSV 序号），并在应用对象上打标记 `_coal_data_initialized` 避免重复执行。CSV 列名支持中英文别名映射（如 `煤种名称`/`name`、`热值(kcal/kg)`/`calorific_value`），因此首次访问任意接口即可获得可用数据。
@@ -170,7 +170,7 @@ repo/
 │   └── services/              # coal_data_service：建表 + CSV 播种
 ├── backend/                   # 业务与算法实现
 │   ├── routes/                # 各蓝图真实端点（coal / optimization / replacement_ratio / reports）
-│   ├── service/               # blending_service(NSGA-II)、replacement_ratio_service、ustb_evaluation
+│   ├── service/               # blending_service(NSGA-II)、replacement_ratio_service
 │   └── utils/                 # excel / file / report / validation 工具
 ├── frontend/                  # Vite + React + TS 单页应用
 │   ├── src/
@@ -183,7 +183,7 @@ repo/
 │   └── .env* / dist/          # 演示开关；构建产物（生产由 Flask 托管）
 ├── data/                      # coal_system.db（默认）、test_coal_datas.csv（种子）
 ├── migrations/                # Flask-Migrate 迁移
-├── static/                    # 兼容历史图片等静态资源
+├── static/                    # favicon 等静态资源
 ├── Dockerfile                 # 多阶段：构建 SPA + Flask/Gunicorn 运行
 ├── .github/workflows/         # ci.yml（PR 测试）、release-on-main.yml（发布）
 ├── requirements.txt           # 运行时依赖

@@ -7,7 +7,6 @@
 构建产物位于 `frontend/dist`。此蓝图负责：
 
 - `/health`：健康检查（JSON）
-- `/images/<path>`：兼容历史图片路径
 - `/favicon.ico`：站点图标
 - 其余非 `/api` 路径：交给 SPA（history 模式），静态资源直出、路由回退到 index.html
 
@@ -54,12 +53,6 @@ def health_check():
             "coal_count": Coal.query.count(),
         }
     )
-
-
-@page_bp.get("/images/<path:filename>")
-def serve_image(filename: str):
-    """兼容历史 `/images/*` 路径，实际从静态图片目录读取文件。"""
-    return send_from_directory(current_app.config["STATIC_IMAGES_DIR"], filename)
 
 
 @page_bp.get("/favicon.ico")
