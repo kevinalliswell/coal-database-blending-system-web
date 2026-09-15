@@ -710,8 +710,10 @@ function ResultsView({
               <MiniReadout label="灰分" value={fixed(s.total_ash, 1)} unit="%" />
               <MiniReadout label="挥发分" value={fixed(s.total_volatile, 1)} unit="%" />
               <MiniReadout label="硫分" value={fixed(s.total_sulfur, 2)} unit="%" />
-              <MiniReadout label="质量风险" value={fixed(s.quality_penalty, 3)} tone="cyan" />
+              <MiniReadout label="质量偏离分" value={fixed(s.quality_penalty, 3)} tone="cyan" />
             </div>
+
+            <div className="text-xs text-mute">质量偏离分按灰分、硫分及挥发分/固定碳窗口计算；分数越低越符合模型偏好，不是燃烧风险概率。</div>
 
             {/* charts row */}
             <div className="grid grid--3">
@@ -757,7 +759,7 @@ function ResultsView({
               ))}
               <span className="pill"><Icon name="refresh" size={12} /> 迭代 {num(res.iterations)}</span>
               <span className="pill"><Icon name="gauge" size={12} /> 耗时 {fixed(res.time_taken, 2)}s</span>
-              <span className="pill"><Icon name="zap" size={12} fill /> 质量风险 {fixed(s.quality_penalty, 4)}</span>
+              <span className="pill"><Icon name="zap" size={12} fill /> 质量偏离分 {fixed(s.quality_penalty, 4)}</span>
             </div>
 
             {/* pareto */}
@@ -780,7 +782,7 @@ function ResultsView({
                           <th className="num">热值</th>
                           <th className="num">灰分</th>
                           <th className="num">硫分</th>
-                          <th className="num">风险</th>
+                          <th className="num">偏离分</th>
                         </tr>
                       </thead>
                       <tbody>

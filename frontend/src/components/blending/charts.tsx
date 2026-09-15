@@ -118,7 +118,7 @@ export function ParetoScatter({
       ...tooltipBase(P),
       formatter: (p: unknown) => {
         const d = p as { data: { value: number[]; isRec: boolean } };
-        return `${d.data.isRec ? '★ 推荐方案<br/>' : ''}成本 <b>¥${d.data.value[0].toFixed(1)}</b><br/>质量风险 <b>${d.data.value[1].toFixed(3)}</b><br/>热值 <b>${Math.round(d.data.value[2])}</b> kcal`;
+        return `${d.data.isRec ? '★ 推荐方案<br/>' : ''}成本 <b>¥${d.data.value[0].toFixed(1)}</b><br/>质量偏离分 <b>${d.data.value[1].toFixed(3)}</b><br/>热值 <b>${Math.round(d.data.value[2])}</b> kcal`;
       },
     },
     xAxis: {
@@ -133,7 +133,7 @@ export function ParetoScatter({
       splitLine: { lineStyle: { color: P.line } },
     },
     yAxis: {
-      name: '质量风险',
+      name: '质量偏离分',
       nameTextStyle: { ...axisText(P), fontSize: 11 },
       type: 'value',
       scale: true,

@@ -11,6 +11,8 @@ def validate_blending_basis(coals, calculation_mode='verified', ratio_basis='unk
         raise ValueError('ratio_basis必须为unknown、ad、ar或d；不支持daf')
 
     warnings = []
+    labels = {'analysis_basis': '工业分析基准', 'calorific_basis': '热值基准',
+              'price_basis': '计价基准', 'calorific_type': '高位/低位热值类型'}
     known_bases = set()
     heat_types = set()
     for coal in coals:
@@ -21,7 +23,7 @@ def validate_blending_basis(coals, calculation_mode='verified', ratio_basis='unk
         metadata = basis_metadata(data)
         unknown = [field for field, value in metadata.items() if value == 'unknown']
         if unknown:
-            warnings.append(f'{coal.name}尚未确认: {", ".join(unknown)}')
+            warnings.append(f'{coal.name}尚未确认: {"、".join(labels[field] for field in unknown)}')
         known_bases.update(metadata[field] for field in BASIS_FIELDS if metadata[field] != 'unknown')
         if metadata['calorific_type'] != 'unknown':
             heat_types.add(metadata['calorific_type'])
