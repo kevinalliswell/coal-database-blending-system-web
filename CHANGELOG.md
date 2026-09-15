@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.1.1 (2026-09-15)
+
+### Bug Fixes
+
+- Use explicit blast enthalpy and separate replacement heat terms
+  ([`5953c67`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/5953c67238a48fc51aa3df4090a08461c63828d7))
+
+
 ## v1.1.0 (2026-09-15)
 
 ### Bug Fixes
