@@ -140,7 +140,8 @@ export default function SmartBlending() {
       setActiveId(res.result.recommended_solution?.solution_id ?? '');
       if (res.status === 'success') toast.success('优化完成', `生成 ${res.result.pareto_solutions.length} 个 Pareto 候选方案`);
       else toast.warn('无可行方案', res.message);
-      if (res.history_saved === false || res.warning) toast.warn('历史记录未保存', res.warning ?? '请先导出当前报告保存结果。');
+      if (res.history_saved === false) toast.warn('历史记录未保存', res.warning ?? '请先导出当前报告保存结果。');
+      else if (res.warning) toast.warn('参数提示', res.warning);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
     },
     onError: (e: Error) => toast.error('优化失败', e.message),
