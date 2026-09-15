@@ -22,10 +22,12 @@ def client(tmp_path, monkeypatch):
         db.session.add_all([
             Coal(id=1, name='无烟煤A', type='无烟煤', price=900, calorific_value=7000,
                  ash_content=10, volatile_matter=10, fixed_carbon=78, total_sulfur=0.6,
-                 total_moisture=8, air_dry_moisture=2, hgi=60),
+                 total_moisture=8, air_dry_moisture=2, hgi=60,
+                 analysis_basis='ad', calorific_basis='ad', price_basis='ad', calorific_type='net'),
             Coal(id=2, name='烟煤B', type='烟煤', price=600, calorific_value=6200,
                  ash_content=8, volatile_matter=30, fixed_carbon=60, total_sulfur=0.4,
-                 total_moisture=18, air_dry_moisture=2, hgi=55),
+                 total_moisture=18, air_dry_moisture=2, hgi=55,
+                 analysis_basis='ad', calorific_basis='ad', price_basis='ad', calorific_type='net'),
         ])
         db.session.commit()
     yield app.test_client()
@@ -33,8 +35,10 @@ def client(tmp_path, monkeypatch):
         db.session.remove()
 
 
-def solve(client):
+def solve(client, calculation_mode='verified', ratio_basis='ad'):
     response = client.post('/api/optimization', json={
+        'calculation_mode': calculation_mode,
+        'ratio_basis': ratio_basis,
         'selected_coal_ids': [1, 2],
         'constraints': {'heat_min': 6000, 'heat_max': 7200, 'heat_target': 6800,
                         'sulfur_min': 0, 'sulfur_max': 0.7},
@@ -58,8 +62,14 @@ def test_response_and_history_preserve_coal_properties_and_effective_configurati
     payload = solve(client)
     snapshot = payload['input_snapshot']
     assert snapshot['schema_version'] == 1
+    assert snapshot['calculation_mode'] == 'verified'
+    assert snapshot['ratio_basis'] == 'ad'
+    assert snapshot['data_validation'] == payload['result']['data_validation']
+    assert snapshot['data_validation']['status'] == 'verified'
     assert snapshot['coals'][0]['price'] == 900
     assert snapshot['coals'][0]['total_moisture'] == 8
+    assert snapshot['coals'][0]['analysis_basis'] == 'ad'
+    assert snapshot['coals'][0]['calorific_type'] == 'net'
     assert snapshot['algorithm_coals'][0]['price'] == 900
     assert snapshot['ga_config']['parallel_workers'] == 1
     assert snapshot['ga_config']['population_size'] == 12
@@ -73,6 +83,20 @@ def test_response_and_history_preserve_coal_properties_and_effective_configurati
     detail = client.get(f'/api/optimization/history/{history["id"]}').get_json()['data']
     assert detail['result_payload']['input_snapshot'] == snapshot
     assert detail['constraints'] == snapshot['constraints']
+
+
+def test_screening_snapshot_preserves_explicit_mode_and_validation_for_replay(client):
+    payload = solve(client, calculation_mode='screening')
+    snapshot = payload['input_snapshot']
+    assert snapshot['calculation_mode'] == 'screening'
+    assert snapshot['ratio_basis'] == 'ad'
+    assert snapshot['data_validation'] == payload['result']['data_validation']
+    assert snapshot['data_validation']['status'] == 'unverified'
+    assert snapshot['data_validation']['scope'] == 'screening_only'
+    history = client.get('/api/optimization/history').get_json()['data'][0]
+    detail = client.get(f'/api/optimization/history/{history["id"]}').get_json()['data']
+    assert detail['result_payload']['input_snapshot'] == snapshot
+    assert detail['request_payload']['calculation_mode'] == 'screening'
 
 
 def test_current_export_uses_constraints_from_the_completed_response(client):

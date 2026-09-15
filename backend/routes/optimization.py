@@ -229,6 +229,11 @@ def run_optimization():
         algorithm = OptimizedSmartBlendingAlgorithm()
         algorithm.set_optimizer_config(ga_config)
         input_snapshot = _build_input_snapshot(selected_coals, coals, params, algorithm.optimizer.config)
+        input_snapshot.update({
+            'calculation_mode': data.get('calculation_mode', 'verified'),
+            'ratio_basis': data_validation['ratio_basis'],
+            'data_validation': deepcopy(data_validation),
+        })
 
         start_time = datetime.now()
         algorithm_result = algorithm.calculate(

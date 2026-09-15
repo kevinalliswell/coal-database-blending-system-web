@@ -186,6 +186,9 @@ export interface OptimizationResponse {
   constraints?: Partial<BlendingConstraints>;
   input_snapshot?: {
     schema_version: number;
+    calculation_mode?: OptimizationRequest['calculation_mode'];
+    ratio_basis?: CoalBasis;
+    data_validation?: DataValidation;
     coals: Coal[];
     algorithm_coals: Record<string, unknown>[];
     algorithm_params: Record<string, unknown>;
