@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import math
 
 import pandas as pd
 
@@ -29,61 +30,56 @@ def safe_int(value, default=0):
 
 
 def validate_coal_data(data):
-    """验证煤种数据的完整性和合理性。"""
+    """校验存储字段，不将缺少分析基准的数据视为已验证化验。"""
+    if not isinstance(data, dict):
+        return False, ['煤种数据必须为对象']
     errors = []
-
-    required_fields = [
-        'name',
-        'type',
-        'price',
-        'calorific_value',
-        'ash_content',
-        'volatile_matter',
-        'fixed_carbon',
-        'total_sulfur',
-    ]
-    for field in required_fields:
-        if field not in data or data[field] in (None, ''):
+    for field in ('name', 'type'):
+        if not isinstance(data.get(field), str) or not data[field].strip():
             errors.append(f'缺少必需字段: {field}')
 
-    if errors:
-        return False, errors
+    def number(field, label, lower, upper=None, required=False, positive=False):
+        value = data.get(field)
+        if value is None or value == '':
+            if required:
+                errors.append(f'缺少必需字段: {field}')
+            return None
+        try:
+            if isinstance(value, bool):
+                raise ValueError
+            parsed = float(value)
+            if not math.isfinite(parsed):
+                raise ValueError
+        except (ValueError, TypeError, OverflowError):
+            errors.append(f'{label}必须为有限数值')
+            return None
+        if parsed < lower or (positive and parsed == lower) or (upper is not None and parsed > upper):
+            errors.append(f'{label}超出允许范围')
+        return parsed
 
-    try:
-        price = float(data['price'])
-        if price <= 0:
-            errors.append('价格必须大于0')
-        elif price > 2000:
-            errors.append('价格过高，请检查数据')
+    number('price', '价格', 0, 2000, required=True, positive=True)
+    number('calorific_value', '热值', 3000, 8000, required=True)
+    proximate = [
+        number('ash_content', '灰分', 0, 50, required=True),
+        number('volatile_matter', '挥发分', 0, 50, required=True),
+        number('fixed_carbon', '固定碳', 0, 100, required=True),
+    ]
+    number('total_sulfur', '全硫', 0, 5, required=True)
+    for field, label in (
+        ('total_moisture', '全水分'), ('moisture', '全水分'),
+        ('air_dry_moisture', '空干基水分'), ('mad', '空干基水分'),
+        ('burnout_rate', '燃尽率'), ('carbon_content', '含碳量'),
+        ('hydrogen_content', '含氢量'), ('nitrogen_content', '含氮量'),
+    ):
+        number(field, label, 0, 100)
+    number('hgi', '可磨性 HGI', 0)
 
-        calorific_value = float(data['calorific_value'])
-        if calorific_value < 3000 or calorific_value > 8000:
-            errors.append('热值范围应在3000-8000 kcal/kg之间')
-
-        ash_content = float(data['ash_content'])
-        if ash_content < 0 or ash_content > 50:
-            errors.append('灰分含量应在0-50%之间')
-
-        volatile_matter = float(data['volatile_matter'])
-        if volatile_matter < 0 or volatile_matter > 50:
-            errors.append('挥发分含量应在0-50%之间')
-
-        fixed_carbon = float(data['fixed_carbon'])
-        if fixed_carbon < 0 or fixed_carbon > 100:
-            errors.append('固定碳含量应在0-100%之间')
-
-        total_sulfur = float(data['total_sulfur'])
-        if total_sulfur < 0 or total_sulfur > 5:
-            errors.append('全硫含量应在0-5%之间')
-
-        total_components = ash_content + volatile_matter + fixed_carbon
-        if total_components < 90 or total_components > 110:
-            errors.append('灰分、挥发分、固定碳总和应接近100%')
-
-    except ValueError:
-        errors.append('数值格式错误')
-
-    return len(errors) == 0, errors
+    # Unknown-basis records can be stored, but cannot certify moisture closure.
+    # This upper bound prevents physically impossible solids totals without
+    # assuming dry coal and rejecting valid as-received assays.
+    if all(value is not None for value in proximate) and sum(proximate) > 100 + 1e-6:
+        errors.append('灰分、挥发分、固定碳总和不能超过100%')
+    return not errors, errors
 
 
 def validate_optimization_params(data):
