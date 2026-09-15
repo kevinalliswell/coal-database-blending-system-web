@@ -10,12 +10,26 @@ export interface FieldMeta {
   required?: boolean;
   group: 'basic' | 'proximate' | 'ultimate' | 'other';
   step?: number;
+  options?: { value: string; label: string }[];
 }
+
+export const COAL_BASIS_OPTIONS = [
+  { value: 'unknown', label: '未确认' },
+  { value: 'd', label: '干基 d（干煤质量）' },
+  { value: 'ad', label: '空干基 ad（分析样质量）' },
+  { value: 'ar', label: '收基 ar（收到煤质量）' },
+];
 
 export const COAL_FIELDS: FieldMeta[] = [
   { key: 'name', label: '煤种名称', required: true, group: 'basic' },
   { key: 'type', label: '煤种类型', required: true, group: 'basic' },
   { key: 'supplier', label: '供应商/产地', group: 'basic' },
+  { key: 'price_basis', label: '计价基准', group: 'basic', options: COAL_BASIS_OPTIONS },
+  { key: 'analysis_basis', label: '灰分/挥发分/固定碳/全硫基准', group: 'proximate', options: COAL_BASIS_OPTIONS },
+  { key: 'calorific_basis', label: '热值基准', group: 'proximate', options: COAL_BASIS_OPTIONS },
+  { key: 'calorific_type', label: '热值类型', group: 'proximate', options: [
+    { value: 'unknown', label: '未确认' }, { value: 'gr', label: '高位 gr' }, { value: 'net', label: '低位 net' },
+  ] },
   { key: 'price', label: '价格', unit: '元/吨', required: true, group: 'basic', step: 0.01 },
   { key: 'calorific_value', label: '热值', unit: 'kcal/kg', required: true, group: 'proximate' },
   { key: 'ash_content', label: '灰分', unit: '%', required: true, group: 'proximate', step: 0.01 },
@@ -32,7 +46,6 @@ export const COAL_FIELDS: FieldMeta[] = [
 ];
 
 export const DEFAULT_CONSTRAINTS: BlendingConstraints = {
-  heat_target: 6800,
   heat_min: 6000,
   heat_max: 7800,
   ash_min: 0,
@@ -72,16 +85,13 @@ export const DEFAULT_GA: GaParams = {
   mutation_rate: 0.2,
   crossover_rate: 0.85,
   tournament_size: 7,
-  elite_ratio: 0.1,
   early_stopping_patience: 200,
-  constraint_penalty_factor: 1500,
-  parallel_workers: 4,
   adaptive_mutation: true,
-  parallel_computing: true,
-  diversity_factor: 0.1,
+  convergence_threshold: 1e-6,
+  pareto_solution_limit: 20,
 };
 
-/** UX improvement: named presets so operators don't tune 12 raw fields. */
+/** Named presets for the effective NSGA-II controls. */
 export interface GaPreset {
   id: 'fast' | 'balanced' | 'fine';
   label: string;
@@ -115,11 +125,10 @@ export const GA_FIELDS: { key: keyof GaParams; label: string; hint: string; min:
   { key: 'mutation_rate', label: '变异率', hint: '基因变异概率', min: 0, max: 1, step: 0.01 },
   { key: 'crossover_rate', label: '交叉率', hint: '个体交叉概率', min: 0, max: 1, step: 0.01 },
   { key: 'tournament_size', label: '锦标赛大小', hint: '父代选择规模', min: 2, max: 20 },
-  { key: 'elite_ratio', label: '精英比例', hint: '直接保留的最优个体占比', min: 0, max: 0.5, step: 0.01 },
   { key: 'early_stopping_patience', label: '早停耐心值', hint: '连续无改进代数上限', min: 50, max: 1000 },
-  { key: 'constraint_penalty_factor', label: '约束惩罚因子', hint: '违反约束的惩罚强度', min: 100, max: 10000 },
-  { key: 'parallel_workers', label: '并行线程', hint: '并行计算线程数', min: 1, max: 16 },
-  { key: 'diversity_factor', label: '多样性因子', hint: '种群多样性维护强度', min: 0, max: 1, step: 0.01 },
+  { key: 'random_seed', label: '随机种子', hint: '相同输入和种子可复现；留空自动生成', min: 0, max: 4294967295 },
+  { key: 'convergence_threshold', label: '收敛阈值', hint: '归一化目标及折中方向的改善阈值', min: 0, max: 1, step: 0.000001 },
+  { key: 'pareto_solution_limit', label: '展示方案数', hint: '仅控制展示数量，不改变推荐', min: 1, max: 2000 },
 ];
 
 export const OPTIMIZATION_TARGET = '多目标Pareto最优';

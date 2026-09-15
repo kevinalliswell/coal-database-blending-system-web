@@ -8,6 +8,8 @@
 
 ---
 
+> 煤质基准契约新增正式校验与显式筛选模式。旧数据默认为 `unknown`，旧请求默认正式校验可能返回 400；升级与字段定义见 [煤质基准与筛选模式](DATA_BASIS_CONTRACT.md)。
+
 ## 1. 基本约定
 
 ### 1.1 Base URL 与路由前缀
@@ -350,7 +352,7 @@ Content-Type：`multipart/form-data`。
 
 | 字段 | 类型 | 必填 | 算法默认 | 说明 |
 | --- | --- | --- | --- | --- |
-| `heat_target` | float | 否 | `6800` | 目标热值（kcal/kg） |
+| `heat_target` | float | 否 | — | 已弃用，兼容接收但不参与优化；使用热值上下限 |
 | `heat_min` / `heat_max` | float | 否 | `6000` / `7800` | 热值上下限 |
 | `ash_min` / `ash_max` | float | 否 | `0.0` / `20.0` | 灰分上下限（%） |
 | `volatile_min` / `volatile_max` | float | 否 | `8.0` / `40.0` | 挥发分上下限（%） |
@@ -359,7 +361,7 @@ Content-Type：`multipart/form-data`。
 | `price_min` / `price_max` | float | 否 | `0` / `1500` | 价格上下限（元/吨） |
 | `ratio_constraints` | object | 否 | `{}` | 单煤种配比约束，见下 |
 
-> 上表「算法默认」为未传该字段时算法侧采用的兜底值；`min`/`max` 缺省仅在成对提供时才参与「min < max」校验。
+> 缺省边界先使用上表默认值补齐，再校验 `min <= max`；单侧边界也必须为有限非负数。
 
 **`ratio_constraints`**：键为煤种 ID 的字符串形式，值为 `{ "min": 百分数, "max": 百分数 }`（单位为百分比，`0-100`）。后端会除以 100 转为小数配比传入算法。未提供某煤种时，其 `min` 默认按 `0`、`max` 按 `100` 处理。
 
@@ -375,27 +377,35 @@ Content-Type：`multipart/form-data`。
 
 | 字段 | 类型 | 默认 | 校验范围 | 说明 |
 | --- | --- | --- | --- | --- |
-| `population_size` | int | `500` | `>= 1` | 种群大小 |
-| `max_generations` | int | `3000` | `>= 1` | 最大迭代代数 |
+| `population_size` | int | `500` | `1-2000` | 种群大小 |
+| `max_generations` | int | `3000` | `1-10000` | 最大迭代代数 |
 | `mutation_rate` | float | `0.2` | `0-1` | 变异率 |
 | `crossover_rate` | float | `0.85` | `0-1` | 交叉率 |
 | `tournament_size` | int | `7` | `>= 2`，且 `<= population_size` | 锦标赛规模 |
-| `elite_ratio` | float | `0.1` | `0-1` | 精英保留比例 |
-| `early_stopping_patience` | int | `200` | `>= 1` | 早停耐心值 |
-| `constraint_penalty_factor` | float | `1500` | `>= 0` | 约束惩罚因子 |
-| `parallel_workers` | int | `4` | `>= 1` | 并行工作线程数 |
+| `elite_ratio` | float | — | `0-1` | 已弃用；NSGA-II不使用此设置 |
+| `early_stopping_patience` | int | `200` | `1-10000` | 早停耐心值 |
+| `constraint_penalty_factor` | float | — | `>= 0` | 已弃用；约束按可行性和违反程度处理 |
+| `parallel_workers` | int | — | `1-16` | 已弃用；NSGA-II使用NumPy内核，不创建此线程池 |
 | `adaptive_mutation` | bool | `true` | — | 是否自适应变异 |
-| `parallel_computing` | bool | `true` | — | 是否启用并行计算 |
-| `diversity_factor` | float | `0.1` | `0-1` | 多样性因子 |
+| `parallel_computing` | bool | — | — | 已弃用；不影响NSGA-II执行 |
+| `diversity_factor` | float | — | `0-1` | 已弃用；不影响NSGA-II执行 |
+| `random_seed` | int | 自动生成 | `0-4294967295` | 实例级随机种子；固定输入、版本和种子可复现 |
+| `convergence_threshold` | float | `0.000001` | `>= 0` | 固定初始尺度下的归一化方向改善阈值 |
+| `pareto_solution_limit` | int | `20` | `1-2000` | 展示上限，不改变完整前沿上的推荐 |
+
+提供弃用参数时，响应顶层返回 `parameter_warnings: string[]`，并汇总到 `warning`。
+这些设置不会被当作有效搜索配置；`heat_target` 同样只用于旧请求兼容。
+实际随机种子在优化器初始化时确定，随有效输入快照记录。
+算法与性能验证细节见 [NSGA-II修复说明](fixes/nsga-performance.md)。
 
 #### 关键校验规则（`validate_optimization_params`）
 
-- `selected_coal_ids` 非空且至少 2 种（少于 2 种返回 `请至少选择两种煤进行混配`；实际取到的可用煤种也需 ≥ 2）。
+- `selected_coal_ids` 须为至少两个不同正整数的数组；兼容十进制整数字符串，规范化后检查重复。浮点、布尔、null、重复 ID 返回 `400`。
 - 传入的煤种 ID 若在库中不存在，返回 `404`（`煤种不存在: [...]`）。
-- 各成对 `min/max` 约束必须满足 `min < max`。
-- 若同时提供 `heat_target`、`heat_min`、`heat_max`，须满足 `heat_min <= heat_target <= heat_max`。
-- 每个配比约束：`min < max`，且 `0 <= min`、`max <= 100`。
-- 提供了 `ratio_constraints` 时：所有 `min` 之和不得 `> 100`，所有 `max` 之和不得 `< 100`。
+- 请求体、`constraints`、`ga_params`、`ratio_constraints` 须为对象；所有已知数值须有限，计数参数须为整数。非法输入返回 `400`。
+- 各成对 `min/max` 约束须满足 `min <= max`，允许相等边界表达固定配方。
+- 每个配比约束须满足 `0 <= min <= max <= 100`；拒绝未选煤种或规范化后重复的配比键。
+- 未指定的已选煤种边界先补为 `0–100%`，再检查全部下限之和不超过 `100%`、上限之和不低于 `100%`。
 - `ga_params` 各数值项须落在上表校验范围；`tournament_size` 不得大于 `population_size`。
 
 #### 请求体示例

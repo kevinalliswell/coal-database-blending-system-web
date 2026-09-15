@@ -1,5 +1,7 @@
 /* Domain models — mirror the Flask backend contracts exactly. */
 
+export type CoalBasis = 'unknown' | 'ad' | 'ar' | 'd';
+
 export interface Coal {
   id: number;
   name: string;
@@ -10,6 +12,10 @@ export interface Coal {
   volatile_matter: number;
   fixed_carbon: number;
   total_sulfur: number;
+  analysis_basis: CoalBasis;
+  calorific_basis: CoalBasis;
+  price_basis: CoalBasis;
+  calorific_type: 'unknown' | 'gr' | 'net';
   total_moisture: number | null;
   air_dry_moisture: number | null;
   moisture: number | null; // alias of total_moisture
@@ -54,7 +60,8 @@ export interface RatioBound {
 }
 
 export interface BlendingConstraints {
-  heat_target: number;
+  /** Legacy historical field; not used by the optimizer. */
+  heat_target?: number;
   heat_min: number;
   heat_max: number;
   ash_min: number;
@@ -76,16 +83,22 @@ export interface GaParams {
   mutation_rate: number;
   crossover_rate: number;
   tournament_size: number;
-  elite_ratio: number;
+  /** @deprecated Ignored by NSGA-II; accepted only for old saved requests. */
+  elite_ratio?: number;
   early_stopping_patience: number;
-  constraint_penalty_factor: number;
-  parallel_workers: number;
+  constraint_penalty_factor?: number;
+  parallel_workers?: number;
   adaptive_mutation: boolean;
-  parallel_computing: boolean;
-  diversity_factor: number;
+  parallel_computing?: boolean;
+  diversity_factor?: number;
+  random_seed?: number;
+  convergence_threshold?: number;
+  pareto_solution_limit?: number;
 }
 
 export interface OptimizationRequest {
+  calculation_mode?: 'verified' | 'screening';
+  ratio_basis?: 'unknown' | 'ad' | 'ar' | 'd';
   optimization_target: string;
   selected_coal_ids: number[];
   constraints: Partial<BlendingConstraints>;
@@ -126,6 +139,8 @@ export interface ConstraintViolation {
 }
 
 export interface OptimizationResult {
+  data_validation?: DataValidation;
+  selected_solution_id?: string;
   objective_type: string;
   optimization_target: string;
   coal_names: string[];
@@ -154,6 +169,13 @@ export interface OptimizationResult {
   timestamp: string;
 }
 
+export interface DataValidation {
+  status: 'verified' | 'unverified';
+  ratio_basis: 'unknown' | 'ad' | 'ar' | 'd';
+  warnings: string[];
+  scope: 'input_consistency_only' | 'screening_only';
+}
+
 export type OptimizationStatus =
   | 'success'
   | 'no_feasible_solution'
@@ -165,6 +187,19 @@ export interface OptimizationResponse {
   message: string;
   history_saved?: boolean;
   warning?: string;
+  parameter_warnings?: string[];
+  constraints?: Partial<BlendingConstraints>;
+  input_snapshot?: {
+    schema_version: number;
+    calculation_mode?: OptimizationRequest['calculation_mode'];
+    ratio_basis?: CoalBasis;
+    data_validation?: DataValidation;
+    coals: Coal[];
+    algorithm_coals: Record<string, unknown>[];
+    algorithm_params: Record<string, unknown>;
+    ga_config: Record<string, unknown>;
+    constraints: Partial<BlendingConstraints>;
+  };
   result: OptimizationResult;
 }
 
@@ -191,7 +226,7 @@ export interface OptimizationHistoryItem {
 export interface OptimizationHistoryDetail extends OptimizationHistoryItem {
   constraints: Partial<BlendingConstraints>;
   request_payload: OptimizationRequest;
-  result_payload: OptimizationResult;
+  result_payload: OptimizationResponse | OptimizationResult;
 }
 
 /* ---------- Replacement ratio ---------- */

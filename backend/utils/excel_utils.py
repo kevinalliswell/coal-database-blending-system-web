@@ -52,6 +52,7 @@ def create_unified_a4_report(wb, data, user_constraints=None):
 
     row = 1
     row = _write_title_block(ws, row, result)
+    row = _write_data_validation_block(ws, row, result)
     row = _write_summary_block(ws, row, result)
     row = _write_ratio_block(ws, row, result)
     row = _write_performance_block(ws, row, result, constraints)
@@ -122,7 +123,7 @@ def _write_title_block(ws, row, result):
     subtitle = (
         f"生成时间：{_display_timestamp(result.get('timestamp'))}    "
         f"|    优化目标：{objective_label}    "
-        f"|    可行性：{'满足全部硬约束' if result.get('is_feasible') else '未形成可行方案'}"
+        f"|    数学可行性：{'满足数值约束' if result.get('is_feasible') else '未形成可行方案'}"
     )
     _merge_and_write(
         ws,
@@ -136,6 +137,32 @@ def _write_title_block(ws, row, result):
     ws.row_dimensions[row].height = 20
     row += 2
     return row
+
+
+def _data_validation_label(result):
+    status = (result.get('data_validation') or {}).get('status')
+    if status == 'unverified':
+        return '基准未确认，仅用于筛选'
+    if status == 'verified':
+        return '基准检查通过（不代表现场工艺验证）'
+    return '基准验证未记录'
+
+
+def _write_data_validation_block(ws, row, result):
+    validation = result.get('data_validation') or {}
+    row = _write_section_title(ws, row, '数据基准与用途')
+    lines = [
+        _data_validation_label(result),
+        f"配比质量基准：{validation.get('ratio_basis', '未记录')}",
+        '检查范围为输入基准一致性及工业分析闭合，不代表现场工艺验证。',
+        *(validation.get('warnings') or []),
+    ]
+    for line in lines:
+        _merge_and_write(ws, f'A{row}:H{row}', line, VALUE_FONT, WARNING_FILL,
+                         THIN_BORDER, Alignment(horizontal='left', vertical='center', wrap_text=True))
+        ws.row_dimensions[row].height = max(24, 16 * ((len(line) // 50) + 1))
+        row += 1
+    return row + 1
 
 
 def _write_summary_block(ws, row, result):
@@ -166,12 +193,12 @@ def _write_summary_block(ws, row, result):
         status_row,
         'A',
         '当前结论',
-        '推荐用于喷煤配煤' if result.get('constraints_satisfied') else '需调整约束或煤种后再优化',
+        _data_validation_label(result) if result.get('constraints_satisfied') else '需调整约束或煤种后再优化',
         'E',
         '约束满足',
         '是' if result.get('constraints_satisfied') else '否',
     )
-    ws[f'B{status_row}'].font = STATUS_OK_FONT if result.get('constraints_satisfied') else STATUS_BAD_FONT
+    ws[f'B{status_row}'].font = STATUS_WARN_FONT
     ws[f'F{status_row}'].font = STATUS_OK_FONT if result.get('constraints_satisfied') else STATUS_BAD_FONT
     return status_row + 2
 
@@ -233,7 +260,9 @@ def _write_performance_block(ws, row, result, constraints):
     ]
 
     for indicator, actual, unit, target, ok, review in performance_rows:
-        status_text = '达标' if ok else '偏离'
+        status_text = '未校验' if ok is None else '达标' if ok else '偏离'
+        if ok and (result.get('data_validation') or {}).get('status') == 'unverified':
+            status_text = '试算数值满足'
         values = [
             indicator,
             _format_number(actual, 2 if unit == '%' or unit == '元/吨' else 0, ''),
@@ -243,8 +272,8 @@ def _write_performance_block(ws, row, result, constraints):
             review,
         ]
         _write_table_row(ws, row, values)
-        ws[f'E{row}'].font = STATUS_OK_FONT if ok else STATUS_BAD_FONT
-        ws[f'E{row}'].fill = SUCCESS_FILL if ok else ERROR_FILL
+        ws[f'E{row}'].font = SMALL_FONT if ok is None else STATUS_OK_FONT if ok else STATUS_BAD_FONT
+        ws[f'E{row}'].fill = LABEL_FILL if ok is None else SUCCESS_FILL if ok else ERROR_FILL
         row += 1
 
     return row + 1
@@ -279,8 +308,8 @@ def _write_constraints_block(ws, row, result, constraints):
     diagnosis_items = result.get('diagnosis', []) or []
 
     left_lines = (
-        ['全部硬约束满足'] if result.get('constraints_satisfied')
-        else ['当前方案未满足全部硬约束']
+        ['全部数值约束满足'] if result.get('constraints_satisfied')
+        else ['当前方案未满足全部数值约束']
     )
     if active_constraints:
         left_lines.extend([f'活跃约束：{item}' for item in active_constraints[:6]])
@@ -459,6 +488,8 @@ def _range_text(min_value, max_value):
 
 
 def _within_range(value, min_value=None, max_value=None):
+    if min_value is None and max_value is None:
+        return None
     if value is None:
         return False
     if min_value is not None and value < min_value:
@@ -500,10 +531,17 @@ def _build_conclusion_text(result):
     total_heat = _format_number(result.get('total_heat'), 0, ' kcal/kg')
     active_constraints = result.get('active_constraints', []) or []
 
+    if (result.get('data_validation') or {}).get('status') == 'unverified':
+        return (
+            '本次为未确认数据的试算结果：基准未确认，仅用于筛选，不可直接用于生产。'
+            f'数值约束{"满足" if feasible else "未满足"}；吨煤成本 {total_price}，综合热值 {total_heat}。'
+            '请先确认检验数据、热值种类及质量/价格/配比基准，再开展工艺验证。'
+        )
+
     if feasible:
         constraint_text = '；'.join(active_constraints[:3]) if active_constraints else '当前方案存在一定约束余量'
         return (
-            f'本次优化已形成可直接用于喷煤工艺评估的推荐方案。'
+            f'本次优化形成数值约束下的候选方案，不代表现场工艺验证。'
             f'在满足硬约束前提下，当前方案的吨煤成本为 {total_price}，综合热值为 {total_heat}。'
             f'需要重点关注的活跃约束为：{constraint_text}。'
             f'导出时已按 A4 纵向页面布局优化，适合直接打印留档或用于会议汇报。'
@@ -546,6 +584,10 @@ def create_coal_template():
     """创建煤种数据导入模板。"""
     template_data = pd.DataFrame({
         '序号': [1],
+        '工业分析基准': ['unknown'],
+        '热值基准': ['unknown'],
+        '热值类型': ['unknown'],
+        '计价基准': ['unknown'],
         '煤种名称': ['示例煤种'],
         '煤种类型': ['烟煤'],
         '供应商/产地': ['示例供应商'],
@@ -574,6 +616,10 @@ def create_coal_template_with_mad():
     """创建包含空干基水分字段的煤种数据导入模板。"""
     template_data = pd.DataFrame({
         '序号': [1],
+        '工业分析基准': ['unknown'],
+        '热值基准': ['unknown'],
+        '热值类型': ['unknown'],
+        '计价基准': ['unknown'],
         '煤种名称': ['示例煤种'],
         '煤种类型': ['烟煤'],
         '供应商/产地': ['示例供应商'],

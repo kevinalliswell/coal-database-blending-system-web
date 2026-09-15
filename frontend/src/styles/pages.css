@@ -145,6 +145,10 @@
   border-color: var(--danger-soft);
   background: linear-gradient(135deg, var(--danger-soft), transparent);
 }
+.verdict--warn {
+  border-color: var(--amber-soft);
+  background: linear-gradient(135deg, var(--amber-soft), transparent);
+}
 .verdict__icon {
   width: 46px;
   height: 46px;
@@ -160,6 +164,10 @@
 .verdict--bad .verdict__icon {
   background: var(--danger-soft);
   color: var(--danger);
+}
+.verdict--warn .verdict__icon {
+  background: var(--amber-soft);
+  color: var(--amber);
 }
 
 /* pareto solution row selectable */

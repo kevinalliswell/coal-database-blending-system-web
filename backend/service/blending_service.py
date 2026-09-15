@@ -10,6 +10,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 from scipy.optimize import linprog
 
+from backend.service.pareto_results import normalized_objectives, select_display_solutions
+from backend.service.nsga_kernel import ObjectiveProgress, dominance_matrix
+from backend.service.linear_blending import objective_endpoint_seeds
+
 
 class ImprovedGeneticOptimizer:
     """用于受约束混煤搜索的遗传算法优化器。"""
@@ -33,11 +37,19 @@ class ImprovedGeneticOptimizer:
         self.config = {**default_config, **(config or {})}
         self.logger = logging.getLogger(__name__)
         self._ensure_config_types()
+        self.reset_random_generators()
 
         self.fitness_history: List[float] = []
         self.best_fitness = float('inf')
         self.stagnation_count = 0
         self.generation_count = 0
+
+    def reset_random_generators(self):
+        seed = self.config.get('random_seed')
+        seed = int(seed) if seed is not None else random.SystemRandom().randrange(2**32)
+        self.config['random_seed'] = seed
+        self.random = random.Random(seed)
+        self.numpy_random = np.random.RandomState(seed)
 
     def _ensure_config_types(self):
         """统一配置类型。"""
@@ -180,7 +192,7 @@ class ImprovedGeneticOptimizer:
 
         for _ in range(max_attempts):
             if ratio_limits is None:
-                candidate = np.random.dirichlet(np.ones(n_coals)).tolist()
+                candidate = self.numpy_random.dirichlet(np.ones(n_coals)).tolist()
             else:
                 min_limits = np.asarray(ratio_limits.get('min', [0.0] * n_coals), dtype=float)
                 max_limits = np.asarray(ratio_limits.get('max', [1.0] * n_coals), dtype=float)
@@ -192,11 +204,11 @@ class ImprovedGeneticOptimizer:
 
                 if seed_individual is not None:
                     seed = np.asarray(seed_individual, dtype=float)
-                    noise = np.random.normal(0.0, 0.03, n_coals)
+                    noise = self.numpy_random.normal(0.0, 0.03, n_coals)
                     weights = np.maximum(seed + noise, 0.0)
                     weights = np.minimum(weights, slack + 1e-9)
                 else:
-                    weights = np.random.random(n_coals) * np.maximum(slack, 1e-9)
+                    weights = self.numpy_random.random(n_coals) * np.maximum(slack, 1e-9)
 
                 if float(weights.sum()) <= 0:
                     weights = np.maximum(slack, 1e-9)
@@ -252,13 +264,13 @@ class ImprovedGeneticOptimizer:
     ) -> Tuple[List[float], List[float]]:
         """交叉产生新个体。"""
         n = len(parent1)
-        alpha = random.random()
+        alpha = self.random.random()
 
-        if random.random() < 0.5:
+        if self.random.random() < 0.5:
             child1 = [alpha * p1 + (1 - alpha) * p2 for p1, p2 in zip(parent1, parent2)]
             child2 = [(1 - alpha) * p1 + alpha * p2 for p1, p2 in zip(parent1, parent2)]
         else:
-            mask = [random.random() < 0.5 for _ in range(n)]
+            mask = [self.random.random() < 0.5 for _ in range(n)]
             child1 = [parent1[i] if mask[i] else parent2[i] for i in range(n)]
             child2 = [parent2[i] if mask[i] else parent1[i] for i in range(n)]
 
@@ -287,12 +299,12 @@ class ImprovedGeneticOptimizer:
         sigma = max(0.005, 0.08 * (1 - self.generation_count / max(self.config['max_generations'], 1)))
 
         for index in range(n_coals):
-            if random.random() < mutation_rate:
-                result[index] += random.gauss(0.0, sigma)
+            if self.random.random() < mutation_rate:
+                result[index] += self.random.gauss(0.0, sigma)
 
-        if n_coals > 1 and random.random() < mutation_rate:
-            i, j = random.sample(range(n_coals), 2)
-            transfer = min(abs(random.gauss(0.0, sigma)), result[i])
+        if n_coals > 1 and self.random.random() < mutation_rate:
+            i, j = self.random.sample(range(n_coals), 2)
+            transfer = min(abs(self.random.gauss(0.0, sigma)), result[i])
             result[i] -= transfer
             result[j] += transfer
 
@@ -316,6 +328,7 @@ class ImprovedGeneticOptimizer:
         self.stagnation_count = 0
         self.generation_count = 0
 
+        self.reset_random_generators()
         population = []
         if seed_individual is not None:
             repaired_seed = self.repair_individual(seed_individual, ratio_limits, seed_individual)
@@ -372,7 +385,7 @@ class ImprovedGeneticOptimizer:
                 parent1 = self.tournament_selection(population, fitness_scores)
                 parent2 = self.tournament_selection(population, fitness_scores)
 
-                if random.random() < self.config['crossover_rate']:
+                if self.random.random() < self.config['crossover_rate']:
                     child1, child2 = self.crossover(parent1, parent2, ratio_limits)
                 else:
                     child1, child2 = parent1.copy(), parent2.copy()
@@ -390,7 +403,7 @@ class ImprovedGeneticOptimizer:
 
     def tournament_selection(self, population: List[List[float]], fitness_scores: List[float]) -> List[float]:
         tournament_size = min(self.config['tournament_size'], len(population))
-        tournament_indices = random.sample(range(len(population)), tournament_size)
+        tournament_indices = self.random.sample(range(len(population)), tournament_size)
         best_index = min(tournament_indices, key=lambda index: fitness_scores[index])
         return population[best_index].copy()
 
@@ -437,21 +450,17 @@ class NSGA2BlendingOptimizer:
         n_coals: int,
         ratio_limits: Dict,
         seed_individual: Optional[List[float]] = None,
+        additional_seeds: Optional[List[List[float]]] = None,
     ) -> List[Dict]:
-        random_seed = self.config.get('random_seed')
-        if random_seed is not None:
-            random.seed(int(random_seed))
-            np.random.seed(int(random_seed))
+        self.base_optimizer.reset_random_generators()
 
         population_size = int(self.config.get('population_size', 300))
         max_generations = int(self.config.get('max_generations', 2000))
         patience = int(self.config.get('early_stopping_patience', 150))
         threshold = float(self.config.get('convergence_threshold', 1e-6))
-        population = self._create_initial_population(n_coals, ratio_limits, seed_individual)
+        population = self._create_initial_population(n_coals, ratio_limits, seed_individual, additional_seeds)
 
-        best_cost = float('inf')
-        best_heat = float('-inf')
-        best_quality = float('inf')
+        progress = ObjectiveProgress(threshold)
         stagnation_count = 0
 
         evaluated = []
@@ -465,17 +474,7 @@ class NSGA2BlendingOptimizer:
 
             feasible = [item for item in evaluated if item['is_feasible']]
             if feasible:
-                gen_best_cost = min(item['total_price'] for item in feasible)
-                gen_best_heat = max(item['total_heat'] for item in feasible)
-                gen_best_quality = min(item['quality_penalty'] for item in feasible)
-                improved = (
-                    gen_best_cost < best_cost - threshold
-                    or gen_best_heat > best_heat + threshold
-                    or gen_best_quality < best_quality - threshold
-                )
-                best_cost = min(best_cost, gen_best_cost)
-                best_heat = max(best_heat, gen_best_heat)
-                best_quality = min(best_quality, gen_best_quality)
+                improved = progress.update([item['objective_tuple'] for item in feasible])
                 stagnation_count = 0 if improved else stagnation_count + 1
             else:
                 stagnation_count += 1
@@ -490,7 +489,7 @@ class NSGA2BlendingOptimizer:
             while len(offspring) < population_size:
                 parent1 = self._select_parent(evaluated)
                 parent2 = self._select_parent(evaluated)
-                if random.random() < float(self.config.get('crossover_rate', 0.85)):
+                if self.base_optimizer.random.random() < float(self.config.get('crossover_rate', 0.85)):
                     child1, child2 = self.base_optimizer.crossover(
                         parent1['ratios'],
                         parent2['ratios'],
@@ -507,8 +506,8 @@ class NSGA2BlendingOptimizer:
             combined = evaluated + self._evaluate_population(offspring, objective_func)
             population = self._next_generation(combined, population_size)
 
-        if not evaluated:
-            evaluated = self._evaluate_population(population, objective_func)
+        # The last iteration may have replaced the population with better offspring.
+        evaluated = self._evaluate_population(population, objective_func)
         fronts = self.fast_non_dominated_sort(evaluated)
         if not fronts:
             return []
@@ -521,11 +520,15 @@ class NSGA2BlendingOptimizer:
         n_coals: int,
         ratio_limits: Dict,
         seed_individual: Optional[List[float]],
+        additional_seeds: Optional[List[List[float]]] = None,
     ) -> List[List[float]]:
         population = []
-        if seed_individual is not None:
-            repaired_seed = self.base_optimizer.repair_individual(seed_individual, ratio_limits, seed_individual)
-            if repaired_seed is not None:
+        seeds = ([seed_individual] if seed_individual is not None else []) + (additional_seeds or [])
+        for seed in seeds:
+            if len(population) >= int(self.config.get('population_size', 300)):
+                break
+            repaired_seed = self.base_optimizer.repair_individual(seed, ratio_limits, seed)
+            if repaired_seed is not None and repaired_seed not in population:
                 population.append(repaired_seed)
 
         while len(population) < int(self.config.get('population_size', 300)):
@@ -538,7 +541,7 @@ class NSGA2BlendingOptimizer:
         evaluated = []
         seen = set()
         for ratios in population:
-            key = tuple(round(value, 8) for value in ratios)
+            key = tuple(ratios)
             if key in seen:
                 continue
             seen.add(key)
@@ -551,7 +554,7 @@ class NSGA2BlendingOptimizer:
 
     def _select_parent(self, evaluated: List[Dict]) -> Dict:
         tournament_size = min(int(self.config.get('tournament_size', 7)), len(evaluated))
-        candidates = random.sample(evaluated, tournament_size)
+        candidates = self.base_optimizer.random.sample(evaluated, tournament_size)
         return min(
             candidates,
             key=lambda item: (
@@ -579,36 +582,22 @@ class NSGA2BlendingOptimizer:
         return [item['ratios'].copy() for item in next_items]
 
     def fast_non_dominated_sort(self, evaluated: List[Dict]) -> List[List[int]]:
-        dominates_map = {index: [] for index in range(len(evaluated))}
-        dominated_counts = {index: 0 for index in range(len(evaluated))}
-        fronts = [[]]
-
-        for left_index, left in enumerate(evaluated):
-            for right_index, right in enumerate(evaluated):
-                if left_index == right_index:
-                    continue
-                if self.dominates(left, right):
-                    dominates_map[left_index].append(right_index)
-                elif self.dominates(right, left):
-                    dominated_counts[left_index] += 1
-
-            if dominated_counts[left_index] == 0:
-                evaluated[left_index]['rank'] = 1
-                fronts[0].append(left_index)
-
-        current = 0
-        while current < len(fronts) and fronts[current]:
+        if not evaluated:
+            return []
+        dominated = dominance_matrix(evaluated)
+        counts = dominated.sum(axis=0)
+        front = np.flatnonzero(counts == 0).tolist()
+        fronts = []
+        while front:
+            fronts.append(front)
             next_front = []
-            for left_index in fronts[current]:
-                for right_index in dominates_map[left_index]:
-                    dominated_counts[right_index] -= 1
-                    if dominated_counts[right_index] == 0:
-                        evaluated[right_index]['rank'] = current + 2
-                        next_front.append(right_index)
-            current += 1
-            if next_front:
-                fronts.append(next_front)
-
+            for index in front:
+                evaluated[index]['rank'] = len(fronts)
+                neighbors = dominated[index]
+                counts[neighbors] -= 1
+                # Keep the scalar implementation's ordering for stable tie breaks.
+                next_front.extend(np.flatnonzero(neighbors & (counts == 0)).tolist())
+            front = next_front
         return fronts
 
     @staticmethod
@@ -795,12 +784,16 @@ class OptimizedSmartBlendingAlgorithm:
             if fast_result is not None:
                 return fast_result
 
+        inequalities, limits, _ = self._build_linear_constraints(metric_vectors, params)
+        additional_seeds = objective_endpoint_seeds(metric_vectors, params, ratio_limits, inequalities, limits)
+        additional_seeds = [seed for seed in additional_seeds if objective_function(seed)['is_feasible']]
         nsga_optimizer = NSGA2BlendingOptimizer(self.optimizer)
         pareto_items = nsga_optimizer.optimize(
             objective_function,
             n_coals=n_coals,
             ratio_limits=ratio_limits,
             seed_individual=seed_ratios,
+            additional_seeds=additional_seeds,
         )
 
         if not pareto_items:
@@ -844,10 +837,13 @@ class OptimizedSmartBlendingAlgorithm:
             }
 
         recommended_solution = self._choose_recommended_solution(pareto_solutions)
+        pareto_solutions = select_display_solutions(
+            pareto_solutions, recommended_solution, self.optimizer.config.get('pareto_solution_limit', 20)
+        )
         final_ratios = recommended_solution['optimal_ratios']
         final_evaluation = next(
             item for item in pareto_items
-            if tuple(round(value, 8) for value in item['ratios']) == tuple(round(value, 8) for value in final_ratios)
+            if tuple(item['ratios']) == tuple(final_ratios)
         )
 
         coal_results = self._build_coal_results(coals, final_ratios, prices, heat_values, ash_contents, volatile_matters, fixed_carbons, sulfur_contents)
@@ -938,11 +934,14 @@ class OptimizedSmartBlendingAlgorithm:
             return None
 
         recommended_solution = self._choose_recommended_solution(pareto_solutions)
+        pareto_solutions = select_display_solutions(
+            pareto_solutions, recommended_solution, self.optimizer.config.get('pareto_solution_limit', 20)
+        )
         final_ratios = recommended_solution['optimal_ratios']
-        final_key = tuple(round(value, 8) for value in final_ratios)
+        final_key = tuple(final_ratios)
         final_evaluation = next(
             item for item in pareto_items
-            if tuple(round(value, 8) for value in item['ratios']) == final_key
+            if tuple(item['ratios']) == final_key
         )
 
         coal_results = self._build_coal_results(
@@ -1046,8 +1045,8 @@ class OptimizedSmartBlendingAlgorithm:
         if lower > upper + 1e-9:
             return []
 
-        solution_limit = int(self.optimizer.config.get('pareto_solution_limit', 20))
-        grid_size = max(41, min(201, solution_limit * 8 + 1))
+        # Display limits must not change the search or its normalization basis.
+        grid_size = 161
         points = {lower, upper, (lower + upper) / 2.0}
         if seed_ratios:
             points.add(float(seed_ratios[0]))
@@ -1060,7 +1059,7 @@ class OptimizedSmartBlendingAlgorithm:
             repaired = self.optimizer.repair_individual(raw, ratio_limits, raw)
             if repaired is None:
                 continue
-            key = tuple(round(value, 8) for value in repaired)
+            key = tuple(repaired)
             if key in seen:
                 continue
             seen.add(key)
@@ -1077,9 +1076,8 @@ class OptimizedSmartBlendingAlgorithm:
                 item['quality_penalty'],
             ),
         )
-        max_solutions = int(self.optimizer.config.get('pareto_solution_limit', 20))
         solutions = []
-        for index, item in enumerate(sorted_items[:max_solutions], start=1):
+        for index, item in enumerate(sorted_items, start=1):
             ratios = [float(value) for value in item['ratios']]
             solutions.append({
                 'solution_id': f'pareto_{index:03d}',
@@ -1139,29 +1137,10 @@ class OptimizedSmartBlendingAlgorithm:
         return coal_results
 
     def _choose_recommended_solution(self, pareto_solutions: List[Dict]) -> Dict:
-        if len(pareto_solutions) == 1:
-            return pareto_solutions[0]
-
-        cost_values = [solution['objective_values']['cost'] for solution in pareto_solutions]
-        heat_values = [solution['objective_values']['heat'] for solution in pareto_solutions]
-        quality_values = [solution['objective_values']['quality_penalty'] for solution in pareto_solutions]
-        cost_min, cost_max = min(cost_values), max(cost_values)
-        heat_min, heat_max = min(heat_values), max(heat_values)
-        quality_min, quality_max = min(quality_values), max(quality_values)
-
-        def normalize_min(value, min_value, max_value):
-            return 0.0 if abs(max_value - min_value) <= 1e-12 else (value - min_value) / (max_value - min_value)
-
-        def normalize_max(value, min_value, max_value):
-            return 0.0 if abs(max_value - min_value) <= 1e-12 else (max_value - value) / (max_value - min_value)
-
-        def ideal_distance(solution):
-            cost_distance = normalize_min(solution['objective_values']['cost'], cost_min, cost_max)
-            heat_distance = normalize_max(solution['objective_values']['heat'], heat_min, heat_max)
-            quality_distance = normalize_min(solution['objective_values']['quality_penalty'], quality_min, quality_max)
-            return (cost_distance ** 2 + heat_distance ** 2 + quality_distance ** 2) ** 0.5
-
-        return min(pareto_solutions, key=lambda solution: (ideal_distance(solution), solution['total_price']))
+        distances = np.linalg.norm(normalized_objectives(pareto_solutions), axis=1)
+        index = min(range(len(pareto_solutions)),
+                    key=lambda index: (distances[index], pareto_solutions[index]['total_price']))
+        return pareto_solutions[index]
 
     def _calculate_quality_penalty(self, evaluation: Dict, params: Dict) -> float:
         ash_penalty = self._normalize_low_is_better(evaluation['total_ash'], params.get('ash_min'), params.get('ash_limit'))

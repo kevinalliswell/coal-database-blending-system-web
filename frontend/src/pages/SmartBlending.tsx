@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { exportCurrentReport, listCoals, runOptimization } from '../lib/api';
+import { buildExportPayload, captureRequest, dataValidationLabel, matchesRequest, resolveDataValidation } from '../lib/blendingResult';
 import type {
   BlendingConstraints,
   Coal,
   GaParams,
   OptimizationResponse,
+  OptimizationRequest,
   ParetoSolution,
 } from '../lib/types';
 import {
@@ -29,6 +31,8 @@ import { useDebounced } from '../hooks/useDebounced';
 const LS_KEY = 'cbos_blending_v1';
 
 interface Config {
+  calculationMode: 'verified' | 'screening';
+  ratioBasis: 'unknown' | 'ad' | 'ar' | 'd';
   selectedIds: number[];
   constraints: BlendingConstraints;
   gaParams: GaParams;
@@ -41,6 +45,8 @@ function loadConfig(): Config {
     if (raw) {
       const p = JSON.parse(raw) as Config;
       return {
+        calculationMode: p.calculationMode ?? 'verified',
+        ratioBasis: p.ratioBasis ?? 'unknown',
         selectedIds: p.selectedIds ?? [],
         constraints: { ...DEFAULT_CONSTRAINTS, ...p.constraints, ratio_constraints: p.constraints?.ratio_constraints ?? {} },
         gaParams: { ...DEFAULT_GA, ...p.gaParams },
@@ -50,14 +56,14 @@ function loadConfig(): Config {
   } catch {
     /* ignore */
   }
-  return { selectedIds: [], constraints: { ...DEFAULT_CONSTRAINTS, ratio_constraints: {} }, gaParams: DEFAULT_GA, presetId: 'balanced' };
+  return { calculationMode: 'verified', ratioBasis: 'unknown', selectedIds: [], constraints: { ...DEFAULT_CONSTRAINTS, ratio_constraints: {} }, gaParams: DEFAULT_GA, presetId: 'balanced' };
 }
 
 export default function SmartBlending() {
   const toast = useToast();
   const [cfg, setCfg] = useState<Config>(loadConfig);
   const [gaOpen, setGaOpen] = useState(false);
-  const [result, setResult] = useState<OptimizationResponse | null>(null);
+  const [completed, setCompleted] = useState<{ response: OptimizationResponse; request: OptimizationRequest } | null>(null);
   const [activeId, setActiveId] = useState<string>('');
   const [progress, setProgress] = useState(0);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -94,41 +100,57 @@ export default function SmartBlending() {
   const sumMin = selectedCoals.reduce((a, c) => a + getBound(c.id).min, 0);
   const sumMax = selectedCoals.reduce((a, c) => a + getBound(c.id).max, 0);
   const issues: string[] = [];
+  if (cfg.calculationMode === 'verified' && cfg.ratioBasis === 'unknown') issues.push('正式计算前请选择配比质量基准；未确认数据请显式选择筛选试算');
   if (cfg.selectedIds.length < 2) issues.push('至少选择 2 种煤');
   for (const r of CONSTRAINT_ROWS) {
     const lo = cfg.constraints[r.min] as number;
     const hi = cfg.constraints[r.max] as number;
-    if (lo >= hi) issues.push(`${r.label}下限应小于上限`);
+    if (lo > hi) issues.push(`${r.label}下限不能大于上限`);
   }
-  const { heat_min, heat_max, heat_target } = cfg.constraints;
-  if (!(heat_min <= heat_target && heat_target <= heat_max)) issues.push('热值目标应在下限与上限之间');
   if (selectedCoals.length >= 2) {
     if (sumMin > 100.0001) issues.push(`配比下限之和 ${fixed(sumMin, 1)}% 超过 100%`);
     if (sumMax < 99.9999) issues.push(`配比上限之和 ${fixed(sumMax, 1)}% 不足 100%`);
     for (const c of selectedCoals) {
       const b = getBound(c.id);
-      if (b.min >= b.max) issues.push(`${c.name} 配比下限应小于上限`);
+      if (b.min > b.max) issues.push(`${c.name} 配比下限不能大于上限`);
     }
   }
   const canSolve = issues.length === 0;
 
   /* ---- solve ---- */
+  // Historical local settings may still contain the retired, unused heat target.
+  const submittedConstraints = { ...cfg.constraints };
+  delete submittedConstraints.heat_target;
+  const currentRequest: OptimizationRequest = {
+    calculation_mode: cfg.calculationMode,
+    ratio_basis: cfg.ratioBasis,
+    optimization_target: OPTIMIZATION_TARGET,
+    selected_coal_ids: cfg.selectedIds,
+    constraints: {
+      ...submittedConstraints,
+      ratio_constraints: Object.fromEntries(cfg.selectedIds.map((id) => [String(id), getBound(id)])),
+    },
+    ga_params: cfg.gaParams,
+  };
+  const result = completed && matchesRequest(completed.request, currentRequest) ? completed.response : null;
+  const resultConstraints = {
+    ...DEFAULT_CONSTRAINTS,
+    ...completed?.request.constraints,
+    ...result?.constraints,
+    ...result?.input_snapshot?.constraints,
+  };
   const solveMut = useMutation({
-    mutationFn: () =>
-      runOptimization({
-        optimization_target: OPTIMIZATION_TARGET,
-        selected_coal_ids: cfg.selectedIds,
-        constraints: {
-          ...cfg.constraints,
-          ratio_constraints: Object.fromEntries(cfg.selectedIds.map((id) => [String(id), getBound(id)])),
-        },
-        ga_params: cfg.gaParams,
-      }),
-    onSuccess: (res) => {
-      setResult(res);
+    mutationFn: runOptimization,
+    onMutate: () => setCompleted(null),
+    onSuccess: (res, request) => {
+      const data_validation = resolveDataValidation(res.result.data_validation, request);
+      setCompleted({ response: { ...res, result: { ...res.result, data_validation } }, request });
       setActiveId(res.result.recommended_solution?.solution_id ?? '');
-      if (res.status === 'success') toast.success('优化完成', `生成 ${res.result.pareto_solutions.length} 个 Pareto 候选方案`);
+      if (res.status === 'success' && data_validation?.status === 'unverified') toast.warn('试算完成，仅用于筛选', `生成 ${res.result.pareto_solutions.length} 个数值可行候选方案`);
+      else if (res.status === 'success') toast.success('优化完成', `生成 ${res.result.pareto_solutions.length} 个 Pareto 候选方案`);
       else toast.warn('无可行方案', res.message);
+      if (res.history_saved === false) toast.warn('历史记录未保存', res.warning ?? '请先导出当前报告保存结果。');
+      else if (res.warning) toast.warn('参数提示', res.warning);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
     },
     onError: (e: Error) => toast.error('优化失败', e.message),
@@ -162,12 +184,16 @@ export default function SmartBlending() {
   const copyShare = async () => {
     if (!res || !activeSolution) return;
     const lines = [
-      '【智能混煤推荐方案】',
+      '【智能混煤方案】',
+      `方案: ${activeSolution.solution_id}`,
       ...activeSolution.coal_names.map((n, i) => `  ${n}: ${fixed(activeSolution.optimal_ratios[i] * 100, 1)}%`),
       `吨煤成本: ¥${fixed(activeSolution.total_price, 1)}`,
       `综合热值: ${num(activeSolution.total_heat)} kcal/kg`,
       `灰分/硫分: ${fixed(activeSolution.total_ash, 1)}% / ${fixed(activeSolution.total_sulfur, 2)}%`,
-      `方案状态: ${feasible ? '满足全部工艺约束' : '存在约束冲突'}`,
+      `数值约束: ${feasible ? '满足' : '存在约束冲突'}`,
+      `数据状态: ${dataValidationLabel(res.data_validation)}`,
+      ...(res.data_validation?.warnings ?? []),
+      '用途: 仅作配煤评估参考，不代表现场工艺验证。',
     ];
     try {
       await navigator.clipboard.writeText(lines.join('\n'));
@@ -178,7 +204,7 @@ export default function SmartBlending() {
   };
 
   const exportMut = useMutation({
-    mutationFn: () => exportCurrentReport(result!),
+    mutationFn: exportCurrentReport,
     onSuccess: (blob) => {
       const ext = blob.type.includes('json') ? 'json' : 'xlsx';
       downloadBlob(blob, `混煤优化报告_${stamp()}.${ext}`);
@@ -195,6 +221,34 @@ export default function SmartBlending() {
           <p className="page__lead">选煤 → 定约束 → 配比边界 → NSGA-II 多目标求解，输出 Pareto 候选与推荐配比。</p>
         </div>
       </div>
+
+      <section className="panel mb-20">
+        <div className="panel__body col gap-12">
+          <div className="row gap-16 wrap">
+            <label className="col gap-6 grow">
+              <span className="text-sm fw-500">计算模式</span>
+              <select className="select" value={cfg.calculationMode} onChange={(e) => setCfg((c) => ({ ...c, calculationMode: e.target.value as Config['calculationMode'] }))}>
+                <option value="verified">基准一致计算</option>
+                <option value="screening">未确认数据试算（仅用于筛选）</option>
+              </select>
+            </label>
+            <label className="col gap-6 grow">
+              <span className="text-sm fw-500">配比质量基准</span>
+              <select className="select" value={cfg.ratioBasis} onChange={(e) => setCfg((c) => ({ ...c, ratioBasis: e.target.value as Config['ratioBasis'] }))}>
+                <option value="unknown">未确认 / 请选择</option>
+                <option value="ad">空气干燥基（ad）</option>
+                <option value="ar">收到基（ar）</option>
+                <option value="d">干基（d）</option>
+              </select>
+            </label>
+          </div>
+          <div className={`text-sm ${cfg.calculationMode === 'screening' ? 'text-amber' : 'text-mute'}`}>
+            {cfg.calculationMode === 'screening'
+              ? '试算可使用未确认基准的数据，仅用于煤种筛选，不可直接用于生产。已知的基准冲突仍需先修正。'
+              : '将检查煤质、热值、价格与配比的基准一致性及工业分析闭合。本版本不自动换算基准；通过检查不代表现场工艺验证。'}
+          </div>
+        </div>
+      </section>
 
       <div className="split">
         {/* ---------------- left workspace ---------------- */}
@@ -231,17 +285,13 @@ export default function SmartBlending() {
                 <span className="step__title">工艺约束窗口</span>
                 <span className="text-xs text-mute">先锁定生产边界，再在可行域内寻优</span>
               </div>
-              {/* heat with target */}
+              {/* heat window */}
               <div className="cwin">
                 <div>
                   <div className="cwin__label">热值</div>
                   <div className="cwin__unit">kcal/kg</div>
                 </div>
                 <div className="row gap-10 wrap">
-                  <div style={{ minWidth: 120 }}>
-                    <div className="text-xs text-mute mb-4">目标</div>
-                    <input className="input" type="number" value={cfg.constraints.heat_target} onChange={(e) => patchConstraint('heat_target', +e.target.value)} />
-                  </div>
                   <div className="minmax grow" style={{ minWidth: 200 }}>
                     <input className="input" type="number" value={cfg.constraints.heat_min} onChange={(e) => patchConstraint('heat_min', +e.target.value)} />
                     <span className="minmax__sep">–</span>
@@ -330,8 +380,8 @@ export default function SmartBlending() {
                   <span className="readout__value is-ember">{selectedCoals.length}<span className="u">种</span></span>
                 </div>
                 <div className="readout" style={{ textAlign: 'right' }}>
-                  <span className="readout__label">目标热值</span>
-                  <span className="readout__value">{num(cfg.constraints.heat_target)}</span>
+                  <span className="readout__label">热值窗口</span>
+                  <span className="mono fw-500">{num(cfg.constraints.heat_min)}–{num(cfg.constraints.heat_max)}</span>
                 </div>
               </div>
 
@@ -382,7 +432,7 @@ export default function SmartBlending() {
                   </div>
                 </div>
               ) : (
-                <button className="btn btn--primary btn--lg btn--block" disabled={!canSolve} onClick={() => solveMut.mutate()}>
+                <button className="btn btn--primary btn--lg btn--block" disabled={!canSolve} onClick={() => solveMut.mutate(captureRequest(currentRequest))}>
                   <Icon name="play" size={16} fill /> 开始优化求解
                 </button>
               )}
@@ -401,7 +451,7 @@ export default function SmartBlending() {
                     </div>
                     <div className="row between">
                       <span className="text-sm text-mute">方案状态</span>
-                      {feasible ? <StatusPill tone="mint">可行推荐</StatusPill> : <StatusPill tone="danger">无可行解</StatusPill>}
+                      {feasible ? <StatusPill tone={res?.data_validation?.status === 'unverified' ? 'warn' : 'mint'}>{res?.data_validation?.status === 'unverified' ? '试算可行（未确认）' : '数值约束可行'}</StatusPill> : <StatusPill tone="danger">无可行解</StatusPill>}
                     </div>
                     <button className="btn btn--ghost btn--block mt-4" onClick={() => resultRef.current?.scrollIntoView({ behavior: 'smooth' })}>
                       <Icon name="arrowDown" size={15} /> 查看完整结果
@@ -416,22 +466,34 @@ export default function SmartBlending() {
 
       {/* ---------------- results ---------------- */}
       <div ref={resultRef} style={{ scrollMarginTop: 12 }}>
+        {completed && !result && (
+          <div className="verdict verdict--bad mt-24" role="status">
+            参数已更改，上次结果已失效。请重新求解后查看、分享或导出方案。
+          </div>
+        )}
+        {result && (result.history_saved === false || result.warning) && (
+          <div className="verdict verdict--bad mt-24" role="alert">
+            {result.warning ?? '本次结果未保存到历史记录，请先导出报告保存结果。'}
+          </div>
+        )}
         {result && res && (
           <section className="mt-24">
             <ResultsView
               res={res}
               feasible={feasible}
-              constraints={cfg.constraints}
+              constraints={resultConstraints}
               solutions={solutions}
               activeSolution={activeSolution}
               activeId={activeId}
               recommendedId={res.recommended_solution?.solution_id ?? ''}
               onPick={setActiveId}
-              onExport={() => exportMut.mutate()}
+              onExport={() => {
+                if (completed && activeSolution) exportMut.mutate(buildExportPayload(result, completed.request, activeSolution));
+              }}
               exporting={exportMut.isPending}
               onCopy={copyShare}
-              onResolve={() => solveMut.mutate()}
-              resolving={solveMut.isPending}
+              onResolve={() => solveMut.mutate(captureRequest(currentRequest))}
+              resolving={solveMut.isPending || !canSolve}
             />
           </section>
         )}
@@ -588,20 +650,24 @@ function ResultsView({
   resolving: boolean;
 }) {
   const s = activeSolution;
+  const unverified = res.data_validation?.status === 'unverified';
   const P = useChartPalette();
   return (
     <div className="col gap-18">
       {/* verdict */}
-      <div className={`verdict ${feasible ? 'verdict--ok' : 'verdict--bad'}`}>
+      <div className={`verdict ${unverified ? 'verdict--warn' : feasible ? 'verdict--ok' : 'verdict--bad'}`}>
         <span className="verdict__icon">
-          <Icon name={feasible ? 'checkCircle' : 'xCircle'} size={26} />
+          <Icon name={unverified ? 'alert' : feasible ? 'checkCircle' : 'xCircle'} size={26} />
         </span>
         <div className="grow">
           <div className="fw-600" style={{ fontSize: 16 }}>
-            {feasible ? '已找到可行推荐方案' : '当前约束下无可行方案'}
+            {unverified ? '试算结果：基准未确认，仅用于筛选' : feasible ? '已找到数值约束可行方案' : '当前约束下无可行方案'}
           </div>
           <div className="text-sm text-mute">
-            {(res.diagnosis ?? []).join(' · ') || (feasible ? '满足全部工艺硬约束' : '请放宽最紧的约束或增选煤种')}
+            {dataValidationLabel(res.data_validation)}。{unverified ? '不可直接用于生产。' : '仅表示输入和数值约束检查，不代表现场工艺验证。'}
+            <div>数值约束：{feasible ? '满足' : '未找到可行解'}</div>
+            <div>{(res.diagnosis ?? []).join(' · ')}</div>
+            {(res.data_validation?.warnings ?? []).map((warning, index) => <div key={index}>{warning}</div>)}
           </div>
         </div>
         <div className="row gap-8 wrap end">
@@ -649,7 +715,7 @@ function ResultsView({
 
             {/* charts row */}
             <div className="grid grid--3">
-              <ChartPanel title="推荐配比" icon="beaker">
+              <ChartPanel title="当前方案配比" icon="beaker">
                 <RatioDonut names={s.coal_names} ratios={s.optimal_ratios} />
                 <div className="col gap-6 mt-8">
                   {s.coal_names.map((n, i) => (
@@ -686,12 +752,12 @@ function ResultsView({
 
             {/* algorithm meta */}
             <div className="row gap-10 wrap">
-              {res.active_constraints.map((a) => (
+              {(s.active_constraints ?? []).map((a) => (
                 <span key={a} className="pill pill--warn"><Icon name="target" size={12} /> {a} 贴边</span>
               ))}
               <span className="pill"><Icon name="refresh" size={12} /> 迭代 {num(res.iterations)}</span>
               <span className="pill"><Icon name="gauge" size={12} /> 耗时 {fixed(res.time_taken, 2)}s</span>
-              <span className="pill"><Icon name="zap" size={12} fill /> 质量风险 {fixed(res.fitness_value, 4)}</span>
+              <span className="pill"><Icon name="zap" size={12} fill /> 质量风险 {fixed(s.quality_penalty, 4)}</span>
             </div>
 
             {/* pareto */}

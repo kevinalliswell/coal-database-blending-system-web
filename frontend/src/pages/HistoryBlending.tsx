@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { optHistory, optHistoryDetail } from '../lib/api';
 import { qk } from '../lib/query';
+import { dataValidationLabel } from '../lib/blendingResult';
 import { Icon } from '../components/ui/Icon';
 import { EmptyState, SkeletonRows, StatPanel, StatusPill } from '../components/ui/bits';
 import { Drawer } from '../components/ui/Overlay';
@@ -84,7 +85,7 @@ export default function HistoryBlending() {
                     <th className="num">吨煤成本</th>
                     <th className="num">热值</th>
                     <th className="num">硫分</th>
-                    <th>可行性</th>
+                    <th>数学可行性</th>
                     <th style={{ width: 80 }}>操作</th>
                   </tr>
                 </thead>
@@ -106,7 +107,7 @@ export default function HistoryBlending() {
                       <td className="num text-ember">{r.total_price === null ? '—' : `¥${fixed(r.total_price, 1)}`}</td>
                       <td className="num">{num(r.total_heat)}</td>
                       <td className="num">{fixed(r.total_sulfur, 2)}</td>
-                      <td>{r.constraints_satisfied ? <StatusPill tone="mint">可行</StatusPill> : <StatusPill tone="danger">不可行</StatusPill>}</td>
+                      <td>{r.constraints_satisfied ? <StatusPill tone="mint">数值可行</StatusPill> : <StatusPill tone="danger">不可行</StatusPill>}</td>
                       <td>
                         <button className="btn btn--sm btn--ghost" onClick={() => setOpenId(r.id)}>
                           <Icon name="eye" size={14} /> 详情
@@ -145,6 +146,8 @@ function DetailDrawer({ id, onClose }: { id: number | null; onClose: () => void 
   });
   const [showRaw, setShowRaw] = useState(false);
   const d = detail.data;
+  const historicalResult = d && ('result' in d.result_payload ? d.result_payload.result : d.result_payload);
+  const unverified = historicalResult?.data_validation?.status === 'unverified' || d?.request_payload?.calculation_mode === 'screening';
 
   return (
     <Drawer open={id !== null} onClose={onClose} title="优化历史详情" subtitle={d ? shortDate(d.date) : ''} icon={<Icon name="beaker" size={18} />} wide>
@@ -152,13 +155,15 @@ function DetailDrawer({ id, onClose }: { id: number | null; onClose: () => void 
         <SkeletonRows rows={8} cols={2} />
       ) : (
         <div className="col gap-18">
-          <div className={`verdict ${d.constraints_satisfied ? 'verdict--ok' : 'verdict--bad'}`} style={{ padding: '12px 14px' }}>
+          <div className={`verdict ${unverified ? 'verdict--warn' : d.constraints_satisfied ? 'verdict--ok' : 'verdict--bad'}`} style={{ padding: '12px 14px' }}>
             <span className="verdict__icon" style={{ width: 38, height: 38 }}>
-              <Icon name={d.constraints_satisfied ? 'checkCircle' : 'xCircle'} size={20} />
+              <Icon name={unverified ? 'alert' : d.constraints_satisfied ? 'checkCircle' : 'xCircle'} size={20} />
             </span>
             <div>
-              <div className="fw-600 text-sm">{d.constraints_satisfied ? '满足全部工艺约束' : '存在约束冲突'}</div>
-              <div className="text-xs text-mute">目标 {d.result_payload?.optimization_target ?? '多目标Pareto最优'}</div>
+              <div className="fw-600 text-sm">{dataValidationLabel(historicalResult?.data_validation, d.request_payload?.calculation_mode)}</div>
+              <div className="text-xs text-mute">{d.constraints_satisfied ? '数值约束满足' : '存在数值约束冲突'}；{unverified ? '仅用于筛选，不可直接用于生产。' : '不代表现场工艺验证。'}</div>
+              {(historicalResult?.data_validation?.warnings ?? []).map((warning, index) => <div className="text-xs text-mute" key={index}>{warning}</div>)}
+              <div className="text-xs text-mute">目标 {historicalResult?.optimization_target ?? '多目标Pareto最优'}</div>
             </div>
           </div>
 
