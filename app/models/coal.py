@@ -20,6 +20,10 @@ class Coal(db.Model):
     volatile_matter = db.Column(db.Float, nullable=False)
     fixed_carbon = db.Column(db.Float, nullable=False)
     total_sulfur = db.Column(db.Float, nullable=False)
+    analysis_basis = db.Column(db.String(16), nullable=False, default="unknown", server_default="unknown")
+    calorific_basis = db.Column(db.String(16), nullable=False, default="unknown", server_default="unknown")
+    calorific_type = db.Column(db.String(16), nullable=False, default="unknown", server_default="unknown")
+    price_basis = db.Column(db.String(16), nullable=False, default="unknown", server_default="unknown")
     total_moisture = db.Column(db.Float)
     air_dry_moisture = db.Column(db.Float)
     supplier = db.Column(db.String(100))
@@ -52,6 +56,10 @@ class Coal(db.Model):
             "volatile_matter": self.volatile_matter,
             "fixed_carbon": self.fixed_carbon,
             "total_sulfur": self.total_sulfur,
+            "analysis_basis": self.analysis_basis or "unknown",
+            "calorific_basis": self.calorific_basis or "unknown",
+            "calorific_type": self.calorific_type or "unknown",
+            "price_basis": self.price_basis or "unknown",
             "total_moisture": self.total_moisture,
             "air_dry_moisture": self.air_dry_moisture,
             "moisture": self.total_moisture,

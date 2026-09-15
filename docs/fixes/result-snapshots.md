@@ -14,6 +14,9 @@
 | 字段 | 内容 |
 |---|---|
 | `schema_version` | 快照格式版本，目前为 1 |
+| `calculation_mode` | 实际采用的 `verified` 或 `screening` 模式，包含未显式提交时的默认模式 |
+| `ratio_basis` | 实际采用的配比质量基准 |
+| `data_validation` | 输入一致性检查的状态、范围及 warnings；重放时保留试算用途限制 |
 | `coals` | 求解当时的完整 `Coal.to_dict()`，含价格、水分、类型及其后的数据基准扩展 |
 | `algorithm_coals` | 实际交给计算器的煤质字段 |
 | `algorithm_params` | 完整求解约束参数 |

@@ -232,6 +232,10 @@ export async function mockUpload(file: File) {
     }
     const draft: CoalDraft = {
       name,
+      analysis_basis: 'unknown',
+      calorific_basis: 'unknown',
+      price_basis: 'unknown',
+      calorific_type: 'unknown',
       type: cells[1]?.trim() || '其他',
       supplier: cells[2]?.trim() || null,
       price: +cells[3] || 0,

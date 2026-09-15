@@ -1,5 +1,7 @@
 /* Domain models — mirror the Flask backend contracts exactly. */
 
+export type CoalBasis = 'unknown' | 'ad' | 'ar' | 'd';
+
 export interface Coal {
   id: number;
   name: string;
@@ -10,6 +12,10 @@ export interface Coal {
   volatile_matter: number;
   fixed_carbon: number;
   total_sulfur: number;
+  analysis_basis: CoalBasis;
+  calorific_basis: CoalBasis;
+  price_basis: CoalBasis;
+  calorific_type: 'unknown' | 'gr' | 'net';
   total_moisture: number | null;
   air_dry_moisture: number | null;
   moisture: number | null; // alias of total_moisture
@@ -91,6 +97,8 @@ export interface GaParams {
 }
 
 export interface OptimizationRequest {
+  calculation_mode?: 'verified' | 'screening';
+  ratio_basis?: 'unknown' | 'ad' | 'ar' | 'd';
   optimization_target: string;
   selected_coal_ids: number[];
   constraints: Partial<BlendingConstraints>;
@@ -131,6 +139,7 @@ export interface ConstraintViolation {
 }
 
 export interface OptimizationResult {
+  data_validation?: DataValidation;
   selected_solution_id?: string;
   objective_type: string;
   optimization_target: string;
@@ -160,6 +169,13 @@ export interface OptimizationResult {
   timestamp: string;
 }
 
+export interface DataValidation {
+  status: 'verified' | 'unverified';
+  ratio_basis: 'unknown' | 'ad' | 'ar' | 'd';
+  warnings: string[];
+  scope: 'input_consistency_only' | 'screening_only';
+}
+
 export type OptimizationStatus =
   | 'success'
   | 'no_feasible_solution'
@@ -175,6 +191,9 @@ export interface OptimizationResponse {
   constraints?: Partial<BlendingConstraints>;
   input_snapshot?: {
     schema_version: number;
+    calculation_mode?: OptimizationRequest['calculation_mode'];
+    ratio_basis?: CoalBasis;
+    data_validation?: DataValidation;
     coals: Coal[];
     algorithm_coals: Record<string, unknown>[];
     algorithm_params: Record<string, unknown>;

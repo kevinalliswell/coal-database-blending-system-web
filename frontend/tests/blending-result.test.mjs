@@ -6,7 +6,7 @@ import ts from 'typescript';
 // Reuse the project's TypeScript compiler; no browser/test framework dependency.
 const source = await readFile(new URL('../src/lib/blendingResult.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022 } });
-const { captureRequest, matchesRequest, buildExportPayload } = await import(
+const { captureRequest, matchesRequest, buildExportPayload, dataValidationLabel } = await import(
   `data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`
 );
 
@@ -54,4 +54,29 @@ test('export uses the selected candidate and the completed run constraints', () 
   assert.deepEqual(exported.constraints, { sulfur_max: 0.8, ash_max: 20 });
   assert.equal(response.result.total_price, 900);
   assert.equal(buildExportPayload({ ...response, constraints: undefined }, submitted, selected).constraints.sulfur_max, 0.8);
+});
+
+test('screening is explicitly unconfirmed even when an older response has no validation metadata', () => {
+  assert.match(dataValidationLabel(undefined, 'screening'), /基准未确认.*仅用于筛选/);
+  assert.match(dataValidationLabel({ status: 'unverified' }, 'verified'), /仅用于筛选/);
+  assert.match(dataValidationLabel({ status: 'verified' }, 'verified'), /基准检查通过/);
+  assert.match(dataValidationLabel(undefined, 'verified'), /基准验证未记录/);
+});
+
+test('changing calculation mode or ratio basis invalidates a completed run', () => {
+  const current = { ...request(), calculation_mode: 'verified', ratio_basis: 'ad' };
+  const submitted = captureRequest(current);
+  current.calculation_mode = 'screening';
+  assert.equal(matchesRequest(submitted, current), false);
+  current.calculation_mode = 'verified';
+  current.ratio_basis = 'ar';
+  assert.equal(matchesRequest(submitted, current), false);
+});
+
+test('screening export preserves the restriction when legacy/demo responses omit metadata', () => {
+  const submitted = { ...request(), calculation_mode: 'screening', ratio_basis: 'unknown' };
+  const selected = { solution_id: 'p1', coal_names: ['A'], optimal_ratios: [1], quality_penalty: 0, is_feasible: true };
+  const exported = buildExportPayload({ status: 'success', result: {} }, submitted, selected);
+  assert.equal(exported.result.data_validation.status, 'unverified');
+  assert.equal(exported.result.data_validation.ratio_basis, 'unknown');
 });

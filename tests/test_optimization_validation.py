@@ -21,7 +21,8 @@ def client(tmp_path, monkeypatch):
 
 
 def payload():
-    return {'selected_coal_ids': [1, 6], 'constraints': {},
+    return {'calculation_mode': 'screening', 'ratio_basis': 'unknown',
+            'selected_coal_ids': [1, 6], 'constraints': {},
             'ga_params': {'population_size': 8, 'max_generations': 2}}
 
 

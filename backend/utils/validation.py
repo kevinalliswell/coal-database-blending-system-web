@@ -6,6 +6,8 @@ import math
 
 import pandas as pd
 
+from backend.utils.coal_basis import CLOSURE_TOLERANCE, validate_assay_basis
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,8 +79,10 @@ def validate_coal_data(data):
     # Unknown-basis records can be stored, but cannot certify moisture closure.
     # This upper bound prevents physically impossible solids totals without
     # assuming dry coal and rejecting valid as-received assays.
-    if all(value is not None for value in proximate) and sum(proximate) > 100 + 1e-6:
+    if all(value is not None for value in proximate) and sum(proximate) > 100 + (CLOSURE_TOLERANCE if data.get("analysis_basis") in ("ad", "ar", "d") else 1e-6):
         errors.append('灰分、挥发分、固定碳总和不能超过100%')
+    if not errors:
+        errors.extend(validate_assay_basis(data))
     return not errors, errors
 
 
