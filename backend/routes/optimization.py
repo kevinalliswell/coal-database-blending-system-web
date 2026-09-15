@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from app.models import OptimizationHistory
 from app.services.blending_service import OptimizedSmartBlendingAlgorithm
+from app.services.coal_basis_service import validate_blending_basis
 from app.services.coal_data_service import coal_to_algorithm_dict, get_coals_by_ids
 from backend.utils.optimization_validation import normalize_optimization_request
 
@@ -216,6 +217,9 @@ def run_optimization():
         if missing_ids:
             return jsonify({'status': 'error', 'message': f'煤种不存在: {missing_ids}'}), 404
 
+        data_validation = validate_blending_basis(
+            selected_coals, data.get("calculation_mode", "verified"), data.get("ratio_basis", "unknown")
+        )
         coal_names = [coal.name for coal in selected_coals]
         coals = [coal_to_algorithm_dict(coal) for coal in selected_coals]
 
@@ -236,6 +240,7 @@ def run_optimization():
 
         time_taken = (end_time - start_time).total_seconds()
         payload = _build_api_result(coal_names, algorithm_result, time_taken, input_snapshot)
+        payload['result']['data_validation'] = data_validation
 
         if payload['status'] == 'success':
             try:

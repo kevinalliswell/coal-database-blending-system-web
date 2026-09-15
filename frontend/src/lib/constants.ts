@@ -10,12 +10,26 @@ export interface FieldMeta {
   required?: boolean;
   group: 'basic' | 'proximate' | 'ultimate' | 'other';
   step?: number;
+  options?: { value: string; label: string }[];
 }
+
+export const COAL_BASIS_OPTIONS = [
+  { value: 'unknown', label: '未确认' },
+  { value: 'd', label: '干基 d（干煤质量）' },
+  { value: 'ad', label: '空干基 ad（分析样质量）' },
+  { value: 'ar', label: '收基 ar（收到煤质量）' },
+];
 
 export const COAL_FIELDS: FieldMeta[] = [
   { key: 'name', label: '煤种名称', required: true, group: 'basic' },
   { key: 'type', label: '煤种类型', required: true, group: 'basic' },
   { key: 'supplier', label: '供应商/产地', group: 'basic' },
+  { key: 'price_basis', label: '计价基准', group: 'basic', options: COAL_BASIS_OPTIONS },
+  { key: 'analysis_basis', label: '灰分/挥发分/固定碳/全硫基准', group: 'proximate', options: COAL_BASIS_OPTIONS },
+  { key: 'calorific_basis', label: '热值基准', group: 'proximate', options: COAL_BASIS_OPTIONS },
+  { key: 'calorific_type', label: '热值类型', group: 'proximate', options: [
+    { value: 'unknown', label: '未确认' }, { value: 'gr', label: '高位 gr' }, { value: 'net', label: '低位 net' },
+  ] },
   { key: 'price', label: '价格', unit: '元/吨', required: true, group: 'basic', step: 0.01 },
   { key: 'calorific_value', label: '热值', unit: 'kcal/kg', required: true, group: 'proximate' },
   { key: 'ash_content', label: '灰分', unit: '%', required: true, group: 'proximate', step: 0.01 },

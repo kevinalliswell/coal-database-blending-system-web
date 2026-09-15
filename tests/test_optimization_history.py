@@ -68,6 +68,9 @@ def app_client(tmp_path, monkeypatch):
 def build_optimization_payload():
     return {
         'optimization_target': '喷煤性价比最优',
+        # Legacy-shaped fixtures intentionally exercise screening history, not assay certification.
+        'calculation_mode': 'screening',
+        'ratio_basis': 'unknown',
         'selected_coal_ids': [1, 2, 3],
         'constraints': {
             'heat_target': 6100,

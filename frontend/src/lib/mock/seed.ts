@@ -1,7 +1,7 @@
 import type { Coal } from '../types';
 
-/* Real 包钢 (Baotou Steel) coal samples from the project's seed CSV,
-   plus a handful of representative Chinese coals for a fuller demo table. */
+/* Demo values from the project's seed CSV, not verified laboratory assays,
+   plus representative coal rows for a fuller demo table. */
 
 type Row = [
   name: string,
@@ -45,6 +45,10 @@ export function seedCoals(): Coal[] {
     const created = new Date(now.getTime() - (ROWS.length - i) * 86400000 * 3);
     return {
       id: i + 1,
+      analysis_basis: 'unknown',
+      calorific_basis: 'unknown',
+      price_basis: 'unknown',
+      calorific_type: 'unknown',
       name: r[0],
       type: r[1],
       supplier: r[2],

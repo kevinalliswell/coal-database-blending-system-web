@@ -548,6 +548,10 @@ def create_coal_template():
     """创建煤种数据导入模板。"""
     template_data = pd.DataFrame({
         '序号': [1],
+        '工业分析基准': ['unknown'],
+        '热值基准': ['unknown'],
+        '热值类型': ['unknown'],
+        '计价基准': ['unknown'],
         '煤种名称': ['示例煤种'],
         '煤种类型': ['烟煤'],
         '供应商/产地': ['示例供应商'],
@@ -576,6 +580,10 @@ def create_coal_template_with_mad():
     """创建包含空干基水分字段的煤种数据导入模板。"""
     template_data = pd.DataFrame({
         '序号': [1],
+        '工业分析基准': ['unknown'],
+        '热值基准': ['unknown'],
+        '热值类型': ['unknown'],
+        '计价基准': ['unknown'],
         '煤种名称': ['示例煤种'],
         '煤种类型': ['烟煤'],
         '供应商/产地': ['示例供应商'],

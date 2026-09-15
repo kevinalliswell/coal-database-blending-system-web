@@ -19,6 +19,7 @@ from app.extensions import db
 from app.models import Coal
 from app.utils.file_utils import safe_read_csv
 from app.utils.validation import validate_coal_data
+from backend.utils.coal_basis import basis_metadata
 
 
 REQUIRED_FIELDS = (
@@ -43,6 +44,10 @@ OPTIONAL_FLOAT_FIELDS = (
 )
 
 CSV_COLUMN_ALIASES = {
+    "analysis_basis": ("工业分析基准", "analysis_basis"),
+    "calorific_basis": ("热值基准", "calorific_basis"),
+    "calorific_type": ("热值类型", "calorific_type"),
+    "price_basis": ("计价基准", "price_basis"),
     "id": ("序号", "id"),
     "name": ("煤种名称", "name"),
     "type": ("煤种类型", "type"),
@@ -322,6 +327,7 @@ def normalize_coal_payload(data: dict) -> dict:
     if not normalized["type"]:
         raise ValueError("煤种类型不能为空")
 
+    normalized.update(basis_metadata(data))
     return normalized
 
 
@@ -353,6 +359,10 @@ def coals_to_export_dataframe(coals: Iterable[Coal]) -> pd.DataFrame:
         rows.append(
             {
                 "序号": coal.id,
+                "工业分析基准": coal.analysis_basis,
+                "热值基准": coal.calorific_basis,
+                "热值类型": coal.calorific_type,
+                "计价基准": coal.price_basis,
                 "煤种名称": coal.name,
                 "煤种类型": coal.type,
                 "供应商/产地": coal.supplier or "",
