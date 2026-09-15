@@ -20,6 +20,7 @@ C焦灰: 焦炭中灰分造渣所消耗的碳
 
 from typing import Dict, Tuple, Optional, Union, Any, List
 import logging
+import math
 from dataclasses import dataclass
 
 # 设置日志记录
@@ -56,7 +57,7 @@ class BlastFurnaceParameters:
     slag_basicity: float  # 炉渣碱度
     slag_enthalpy: float  # 炉渣热焓
     wind_temperature: float = 1200.0  # 风温，默认为1200°C
-    hot_blast_enthalpy: float = 1.5  # 鼓风热焓，默认为1.5kJ/m³
+    hot_blast_enthalpy: Optional[float] = None  # 实测鼓风热焓 kJ/m³；None 时按风温估算
     carbon_incomplete_combustion_heat: float = 9794.0  # 碳不完全燃烧热，默认为9794kJ/kg
     carbon_heating_heat: float = 2758.0  # 焦炭里的1kg炭加热至1500°C的热量，默认为2758kJ/kg
 
@@ -83,6 +84,14 @@ class ReplacementRatioCalculator:
         self.blast_furnace = blast_furnace_params
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
+    def effective_hot_blast_enthalpy(self) -> float:
+        """Return supplied kJ/m³, or the existing 1.3*T engineering estimate."""
+        supplied = self.blast_furnace.hot_blast_enthalpy
+        value = self.blast_furnace.wind_temperature if supplied is None else supplied
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+            raise ValueError('风温或实测鼓风热焓必须为非负有限数值')
+        return 1.3 * value if supplied is None else value
+
     def calculate_carbon_burning_heat(self, air_volume: float = 1.2) -> float:
         """
         计算1kg碳在风口前燃烧产生的**净有效热量**, 单位: kJ/kg
@@ -102,7 +111,7 @@ class ReplacementRatioCalculator:
         
         # 计算鼓风焓值 (基于温度的焓值计算)
         # 鼓风焓值 ≈ 1.3 × 温度 (kJ/m³·°C)，这是空气的平均比热容
-        blast_enthalpy_per_m3 = 1.3 * self.blast_furnace.wind_temperature  # kJ/m³
+        blast_enthalpy_per_m3 = self.effective_hot_blast_enthalpy()  # kJ/m³
         
         # 鼓风带入的热量
         blast_heat = air_volume * blast_enthalpy_per_m3
@@ -322,9 +331,8 @@ class ReplacementRatioCalculator:
         denominator = carbon_in_coke - carbon_consumed_by_slag_in_coke
         
         # 计算置换比
-        if denominator == 0:
-            self.logger.error("置换比计算错误: 分母为零")
-            raise ValueError("置换比计算错误: 分母为零")
+        if denominator <= 0 or not math.isfinite(denominator):
+            raise ValueError("置换比计算错误: 焦炭有效碳量必须大于零")
         
         displacement_ratio = numerator / denominator
         
@@ -632,7 +640,6 @@ if __name__ == "__main__":
     print(f"最小置换比: {statistics['最小置换比']:.4f}")
     print(f"置换比标准差: {statistics['置换比标准差']:.4f}")
     print(f"置换比波动范围: {statistics['置换比波动范围']:.4f}")
-
 
 
 
