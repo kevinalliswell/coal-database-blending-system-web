@@ -93,6 +93,8 @@ export interface GaParams {
 }
 
 export interface OptimizationRequest {
+  calculation_mode?: 'verified' | 'screening';
+  ratio_basis?: 'unknown' | 'ad' | 'ar' | 'd';
   optimization_target: string;
   selected_coal_ids: number[];
   constraints: Partial<BlendingConstraints>;
@@ -133,6 +135,7 @@ export interface ConstraintViolation {
 }
 
 export interface OptimizationResult {
+  data_validation?: DataValidation;
   selected_solution_id?: string;
   objective_type: string;
   optimization_target: string;
@@ -160,6 +163,13 @@ export interface OptimizationResult {
   recommended_solution: ParetoSolution;
   pareto_solutions: ParetoSolution[];
   timestamp: string;
+}
+
+export interface DataValidation {
+  status: 'verified' | 'unverified';
+  ratio_basis: 'unknown' | 'ad' | 'ar' | 'd';
+  warnings: string[];
+  scope: 'input_consistency_only' | 'screening_only';
 }
 
 export type OptimizationStatus =
