@@ -47,7 +47,6 @@ def _build_algorithm_params(constraints, selected_coal_ids):
         ratio_max_list.append(float(coal_constraint.get('max', 100)) / 100.0)
 
     return {
-        'heat_value': constraints.get('heat_target', 6800),
         'heat_min': constraints.get('heat_min', 6000),
         'heat_max': constraints.get('heat_max', 7800),
         'ash_limit': constraints.get('ash_max', 20.0),
@@ -74,14 +73,27 @@ def _build_ga_config(ga_params):
         'mutation_rate': ga_params.get('mutation_rate', 0.2),
         'crossover_rate': ga_params.get('crossover_rate', 0.85),
         'tournament_size': ga_params.get('tournament_size', 7),
-        'elite_ratio': ga_params.get('elite_ratio', 0.1),
         'early_stopping_patience': ga_params.get('early_stopping_patience', 200),
-        'constraint_penalty_factor': ga_params.get('constraint_penalty_factor', 1500),
-        'parallel_workers': ga_params.get('parallel_workers', 4),
         'adaptive_mutation': ga_params.get('adaptive_mutation', True),
-        'parallel_computing': ga_params.get('parallel_computing', True),
-        'diversity_factor': ga_params.get('diversity_factor', 0.1),
+        # NSGA-II uses NumPy kernels, not the legacy single-objective thread pool.
+        'parallel_computing': False,
+        'parallel_workers': 1,
+        'random_seed': ga_params.get('random_seed'),
+        'convergence_threshold': ga_params.get('convergence_threshold', 1e-6),
+        'pareto_solution_limit': ga_params.get('pareto_solution_limit', 20),
     }
+
+
+def _build_parameter_warnings(data):
+    deprecated = {'elite_ratio', 'constraint_penalty_factor', 'parallel_workers',
+                  'parallel_computing', 'diversity_factor'}
+    ignored = sorted(deprecated.intersection(data.get('ga_params', {})))
+    warnings = []
+    if ignored:
+        warnings.append('NSGA-II不使用以下已弃用参数: ' + ', '.join(ignored))
+    if 'heat_target' in data.get('constraints', {}):
+        warnings.append('heat_target已弃用，不参与优化；热值采用heat_min/heat_max约束')
+    return warnings
 
 
 def _build_input_snapshot(selected_coals, coals, params, ga_config):
@@ -246,6 +258,10 @@ def run_optimization():
         time_taken = (end_time - start_time).total_seconds()
         payload = _build_api_result(coal_names, algorithm_result, time_taken, input_snapshot)
         payload['result']['data_validation'] = data_validation
+        parameter_warnings = _build_parameter_warnings(data)
+        if parameter_warnings:
+            payload['parameter_warnings'] = parameter_warnings
+            payload['warning'] = '; '.join(parameter_warnings)
 
         if payload['status'] == 'success':
             try:
@@ -255,7 +271,9 @@ def run_optimization():
                 db.session.rollback()
                 logger.warning('优化结果已生成，但保存历史记录失败: %s', exc)
                 payload['history_saved'] = False
-                payload['warning'] = '优化结果已生成，但历史记录保存失败，请初始化或迁移数据库后再试。'
+                payload['warning'] = '; '.join(parameter_warnings + [
+                    '优化结果已生成，但历史记录保存失败，请初始化或迁移数据库后再试。'
+                ])
 
         return jsonify(_sanitize_json_value(payload))
 

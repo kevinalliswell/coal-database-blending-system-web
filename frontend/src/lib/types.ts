@@ -83,13 +83,17 @@ export interface GaParams {
   mutation_rate: number;
   crossover_rate: number;
   tournament_size: number;
-  elite_ratio: number;
+  /** @deprecated Ignored by NSGA-II; accepted only for old saved requests. */
+  elite_ratio?: number;
   early_stopping_patience: number;
-  constraint_penalty_factor: number;
-  parallel_workers: number;
+  constraint_penalty_factor?: number;
+  parallel_workers?: number;
   adaptive_mutation: boolean;
-  parallel_computing: boolean;
-  diversity_factor: number;
+  parallel_computing?: boolean;
+  diversity_factor?: number;
+  random_seed?: number;
+  convergence_threshold?: number;
+  pareto_solution_limit?: number;
 }
 
 export interface OptimizationRequest {
@@ -183,6 +187,7 @@ export interface OptimizationResponse {
   message: string;
   history_saved?: boolean;
   warning?: string;
+  parameter_warnings?: string[];
   constraints?: Partial<BlendingConstraints>;
   input_snapshot?: {
     schema_version: number;
