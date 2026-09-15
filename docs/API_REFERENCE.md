@@ -350,7 +350,7 @@ Content-Type：`multipart/form-data`。
 
 | 字段 | 类型 | 必填 | 算法默认 | 说明 |
 | --- | --- | --- | --- | --- |
-| `heat_target` | float | 否 | `6800` | 目标热值（kcal/kg） |
+| `heat_target` | float | 否 | — | 已弃用，兼容接收但不参与优化；使用热值上下限 |
 | `heat_min` / `heat_max` | float | 否 | `6000` / `7800` | 热值上下限 |
 | `ash_min` / `ash_max` | float | 否 | `0.0` / `20.0` | 灰分上下限（%） |
 | `volatile_min` / `volatile_max` | float | 否 | `8.0` / `40.0` | 挥发分上下限（%） |
@@ -380,13 +380,21 @@ Content-Type：`multipart/form-data`。
 | `mutation_rate` | float | `0.2` | `0-1` | 变异率 |
 | `crossover_rate` | float | `0.85` | `0-1` | 交叉率 |
 | `tournament_size` | int | `7` | `>= 2`，且 `<= population_size` | 锦标赛规模 |
-| `elite_ratio` | float | `0.1` | `0-1` | 精英保留比例 |
+| `elite_ratio` | float | — | `0-1` | 已弃用；NSGA-II不使用此设置 |
 | `early_stopping_patience` | int | `200` | `>= 1` | 早停耐心值 |
-| `constraint_penalty_factor` | float | `1500` | `>= 0` | 约束惩罚因子 |
-| `parallel_workers` | int | `4` | `>= 1` | 并行工作线程数 |
+| `constraint_penalty_factor` | float | — | `>= 0` | 已弃用；约束按可行性和违反程度处理 |
+| `parallel_workers` | int | — | `1-16` | 已弃用；NSGA-II使用NumPy内核，不创建此线程池 |
 | `adaptive_mutation` | bool | `true` | — | 是否自适应变异 |
-| `parallel_computing` | bool | `true` | — | 是否启用并行计算 |
-| `diversity_factor` | float | `0.1` | `0-1` | 多样性因子 |
+| `parallel_computing` | bool | — | — | 已弃用；不影响NSGA-II执行 |
+| `diversity_factor` | float | — | `0-1` | 已弃用；不影响NSGA-II执行 |
+| `random_seed` | int | 自动生成 | `0-4294967295` | 实例级随机种子；固定输入、版本和种子可复现 |
+| `convergence_threshold` | float | `0.000001` | `>= 0` | 固定初始尺度下的归一化方向改善阈值 |
+| `pareto_solution_limit` | int | `20` | `1-2000` | 展示上限，不改变完整前沿上的推荐 |
+
+提供弃用参数时，响应顶层返回 `parameter_warnings: string[]`，并汇总到 `warning`。
+这些设置不会被当作有效搜索配置；`heat_target` 同样只用于旧请求兼容。
+实际随机种子在优化器初始化时确定，随有效输入快照记录。
+算法与性能验证细节见 [NSGA-II修复说明](fixes/nsga-performance.md)。
 
 #### 关键校验规则（`validate_optimization_params`）
 

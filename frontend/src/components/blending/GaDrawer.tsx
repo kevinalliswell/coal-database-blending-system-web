@@ -26,7 +26,7 @@ export function GaDrawer({
     setDraft((d) => ({ ...d, ...p.params }));
     setPid(p.id);
   };
-  const setField = (k: keyof GaParams, v: number | boolean) => {
+  const setField = (k: keyof GaParams, v: number | boolean | undefined) => {
     setDraft((d) => ({ ...d, [k]: v }));
     setPid('custom');
   };
@@ -95,7 +95,7 @@ export function GaDrawer({
 
       <button className="btn btn--ghost btn--block mt-16" onClick={() => setShowAdvanced((s) => !s)}>
         <Icon name={showAdvanced ? 'chevronUp' : 'chevronDown'} size={15} />
-        {showAdvanced ? '收起高级参数' : '展开高级参数（12 项）'}
+        {showAdvanced ? '收起高级参数' : `展开高级参数（${GA_FIELDS.length + 1} 项）`}
       </button>
 
       {showAdvanced && (
@@ -109,8 +109,9 @@ export function GaDrawer({
                   min={f.min}
                   max={f.max}
                   step={f.step ?? 1}
-                  value={draft[f.key] as number}
-                  onChange={(e) => setField(f.key, Number(e.target.value))}
+                  value={(draft[f.key] as number | undefined) ?? ''}
+                  onChange={(e) => setField(f.key,
+                    f.key === 'random_seed' && e.target.value === '' ? undefined : Number(e.target.value))}
                 />
               </Field>
             ))}
@@ -122,14 +123,6 @@ export function GaDrawer({
               <span>
                 <div className="fw-500 text-sm">启用自适应变异</div>
                 <div className="text-xs text-mute">根据收敛情况动态调整变异率</div>
-              </span>
-            </label>
-            <label className="switch">
-              <input type="checkbox" checked={draft.parallel_computing} onChange={(e) => setField('parallel_computing', e.target.checked)} />
-              <span className="switch__track" />
-              <span>
-                <div className="fw-500 text-sm">启用并行计算</div>
-                <div className="text-xs text-mute">使用多线程加速求解</div>
               </span>
             </label>
           </div>
