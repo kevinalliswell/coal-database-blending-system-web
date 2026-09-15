@@ -350,7 +350,7 @@ Content-Type：`multipart/form-data`。
 
 | 字段 | 类型 | 必填 | 算法默认 | 说明 |
 | --- | --- | --- | --- | --- |
-| `heat_target` | float | 否 | `6800` | 目标热值（kcal/kg） |
+| `heat_target` | float | 否 | `6800` | 兼容字段；当前多目标算法不使用该值，仅校验非负有限数。使用热值上下限表达约束 |
 | `heat_min` / `heat_max` | float | 否 | `6000` / `7800` | 热值上下限 |
 | `ash_min` / `ash_max` | float | 否 | `0.0` / `20.0` | 灰分上下限（%） |
 | `volatile_min` / `volatile_max` | float | 否 | `8.0` / `40.0` | 挥发分上下限（%） |
@@ -359,7 +359,7 @@ Content-Type：`multipart/form-data`。
 | `price_min` / `price_max` | float | 否 | `0` / `1500` | 价格上下限（元/吨） |
 | `ratio_constraints` | object | 否 | `{}` | 单煤种配比约束，见下 |
 
-> 上表「算法默认」为未传该字段时算法侧采用的兜底值；`min`/`max` 缺省仅在成对提供时才参与「min < max」校验。
+> 缺省边界先使用上表默认值补齐，再校验 `min <= max`；单侧边界也必须为有限非负数。
 
 **`ratio_constraints`**：键为煤种 ID 的字符串形式，值为 `{ "min": 百分数, "max": 百分数 }`（单位为百分比，`0-100`）。后端会除以 100 转为小数配比传入算法。未提供某煤种时，其 `min` 默认按 `0`、`max` 按 `100` 处理。
 
@@ -375,27 +375,27 @@ Content-Type：`multipart/form-data`。
 
 | 字段 | 类型 | 默认 | 校验范围 | 说明 |
 | --- | --- | --- | --- | --- |
-| `population_size` | int | `500` | `>= 1` | 种群大小 |
-| `max_generations` | int | `3000` | `>= 1` | 最大迭代代数 |
+| `population_size` | int | `500` | `1-2000` | 种群大小 |
+| `max_generations` | int | `3000` | `1-10000` | 最大迭代代数 |
 | `mutation_rate` | float | `0.2` | `0-1` | 变异率 |
 | `crossover_rate` | float | `0.85` | `0-1` | 交叉率 |
 | `tournament_size` | int | `7` | `>= 2`，且 `<= population_size` | 锦标赛规模 |
 | `elite_ratio` | float | `0.1` | `0-1` | 精英保留比例 |
-| `early_stopping_patience` | int | `200` | `>= 1` | 早停耐心值 |
+| `early_stopping_patience` | int | `200` | `1-10000` | 早停耐心值 |
 | `constraint_penalty_factor` | float | `1500` | `>= 0` | 约束惩罚因子 |
-| `parallel_workers` | int | `4` | `>= 1` | 并行工作线程数 |
+| `parallel_workers` | int | `4` | `1-16` | 并行工作线程数 |
 | `adaptive_mutation` | bool | `true` | — | 是否自适应变异 |
 | `parallel_computing` | bool | `true` | — | 是否启用并行计算 |
 | `diversity_factor` | float | `0.1` | `0-1` | 多样性因子 |
 
 #### 关键校验规则（`validate_optimization_params`）
 
-- `selected_coal_ids` 非空且至少 2 种（少于 2 种返回 `请至少选择两种煤进行混配`；实际取到的可用煤种也需 ≥ 2）。
+- `selected_coal_ids` 须为至少两个不同正整数的数组；兼容十进制整数字符串，规范化后检查重复。浮点、布尔、null、重复 ID 返回 `400`。
 - 传入的煤种 ID 若在库中不存在，返回 `404`（`煤种不存在: [...]`）。
-- 各成对 `min/max` 约束必须满足 `min < max`。
-- 若同时提供 `heat_target`、`heat_min`、`heat_max`，须满足 `heat_min <= heat_target <= heat_max`。
-- 每个配比约束：`min < max`，且 `0 <= min`、`max <= 100`。
-- 提供了 `ratio_constraints` 时：所有 `min` 之和不得 `> 100`，所有 `max` 之和不得 `< 100`。
+- 请求体、`constraints`、`ga_params`、`ratio_constraints` 须为对象；所有已知数值须有限，计数参数须为整数。非法输入返回 `400`。
+- 各成对 `min/max` 约束须满足 `min <= max`，允许相等边界表达固定配方。
+- 每个配比约束须满足 `0 <= min <= max <= 100`；拒绝未选煤种或规范化后重复的配比键。
+- 未指定的已选煤种边界先补为 `0–100%`，再检查全部下限之和不超过 `100%`、上限之和不低于 `100%`。
 - `ga_params` 各数值项须落在上表校验范围；`tournament_size` 不得大于 `population_size`。
 
 #### 请求体示例

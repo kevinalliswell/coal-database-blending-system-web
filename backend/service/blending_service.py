@@ -10,6 +10,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 from scipy.optimize import linprog
 
+from backend.service.pareto_results import normalized_objectives, select_display_solutions
+
 
 class ImprovedGeneticOptimizer:
     """用于受约束混煤搜索的遗传算法优化器。"""
@@ -507,8 +509,8 @@ class NSGA2BlendingOptimizer:
             combined = evaluated + self._evaluate_population(offspring, objective_func)
             population = self._next_generation(combined, population_size)
 
-        if not evaluated:
-            evaluated = self._evaluate_population(population, objective_func)
+        # The last iteration may have replaced the population with better offspring.
+        evaluated = self._evaluate_population(population, objective_func)
         fronts = self.fast_non_dominated_sort(evaluated)
         if not fronts:
             return []
@@ -844,6 +846,9 @@ class OptimizedSmartBlendingAlgorithm:
             }
 
         recommended_solution = self._choose_recommended_solution(pareto_solutions)
+        pareto_solutions = select_display_solutions(
+            pareto_solutions, recommended_solution, self.optimizer.config.get('pareto_solution_limit', 20)
+        )
         final_ratios = recommended_solution['optimal_ratios']
         final_evaluation = next(
             item for item in pareto_items
@@ -938,6 +943,9 @@ class OptimizedSmartBlendingAlgorithm:
             return None
 
         recommended_solution = self._choose_recommended_solution(pareto_solutions)
+        pareto_solutions = select_display_solutions(
+            pareto_solutions, recommended_solution, self.optimizer.config.get('pareto_solution_limit', 20)
+        )
         final_ratios = recommended_solution['optimal_ratios']
         final_key = tuple(round(value, 8) for value in final_ratios)
         final_evaluation = next(
@@ -1046,8 +1054,8 @@ class OptimizedSmartBlendingAlgorithm:
         if lower > upper + 1e-9:
             return []
 
-        solution_limit = int(self.optimizer.config.get('pareto_solution_limit', 20))
-        grid_size = max(41, min(201, solution_limit * 8 + 1))
+        # Display limits must not change the search or its normalization basis.
+        grid_size = 161
         points = {lower, upper, (lower + upper) / 2.0}
         if seed_ratios:
             points.add(float(seed_ratios[0]))
@@ -1077,9 +1085,8 @@ class OptimizedSmartBlendingAlgorithm:
                 item['quality_penalty'],
             ),
         )
-        max_solutions = int(self.optimizer.config.get('pareto_solution_limit', 20))
         solutions = []
-        for index, item in enumerate(sorted_items[:max_solutions], start=1):
+        for index, item in enumerate(sorted_items, start=1):
             ratios = [float(value) for value in item['ratios']]
             solutions.append({
                 'solution_id': f'pareto_{index:03d}',
@@ -1139,29 +1146,10 @@ class OptimizedSmartBlendingAlgorithm:
         return coal_results
 
     def _choose_recommended_solution(self, pareto_solutions: List[Dict]) -> Dict:
-        if len(pareto_solutions) == 1:
-            return pareto_solutions[0]
-
-        cost_values = [solution['objective_values']['cost'] for solution in pareto_solutions]
-        heat_values = [solution['objective_values']['heat'] for solution in pareto_solutions]
-        quality_values = [solution['objective_values']['quality_penalty'] for solution in pareto_solutions]
-        cost_min, cost_max = min(cost_values), max(cost_values)
-        heat_min, heat_max = min(heat_values), max(heat_values)
-        quality_min, quality_max = min(quality_values), max(quality_values)
-
-        def normalize_min(value, min_value, max_value):
-            return 0.0 if abs(max_value - min_value) <= 1e-12 else (value - min_value) / (max_value - min_value)
-
-        def normalize_max(value, min_value, max_value):
-            return 0.0 if abs(max_value - min_value) <= 1e-12 else (max_value - value) / (max_value - min_value)
-
-        def ideal_distance(solution):
-            cost_distance = normalize_min(solution['objective_values']['cost'], cost_min, cost_max)
-            heat_distance = normalize_max(solution['objective_values']['heat'], heat_min, heat_max)
-            quality_distance = normalize_min(solution['objective_values']['quality_penalty'], quality_min, quality_max)
-            return (cost_distance ** 2 + heat_distance ** 2 + quality_distance ** 2) ** 0.5
-
-        return min(pareto_solutions, key=lambda solution: (ideal_distance(solution), solution['total_price']))
+        distances = np.linalg.norm(normalized_objectives(pareto_solutions), axis=1)
+        index = min(range(len(pareto_solutions)),
+                    key=lambda index: (distances[index], pareto_solutions[index]['total_price']))
+        return pareto_solutions[index]
 
     def _calculate_quality_penalty(self, evaluation: Dict, params: Dict) -> float:
         ash_penalty = self._normalize_low_is_better(evaluation['total_ash'], params.get('ash_min'), params.get('ash_limit'))
