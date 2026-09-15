@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { exportCurrentReport, listCoals, runOptimization } from '../lib/api';
+import { buildExportPayload, captureRequest, matchesRequest } from '../lib/blendingResult';
 import type {
   BlendingConstraints,
   Coal,
   GaParams,
   OptimizationResponse,
+  OptimizationRequest,
   ParetoSolution,
 } from '../lib/types';
 import {
@@ -57,7 +59,7 @@ export default function SmartBlending() {
   const toast = useToast();
   const [cfg, setCfg] = useState<Config>(loadConfig);
   const [gaOpen, setGaOpen] = useState(false);
-  const [result, setResult] = useState<OptimizationResponse | null>(null);
+  const [completed, setCompleted] = useState<{ response: OptimizationResponse; request: OptimizationRequest } | null>(null);
   const [activeId, setActiveId] = useState<string>('');
   const [progress, setProgress] = useState(0);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -98,37 +100,48 @@ export default function SmartBlending() {
   for (const r of CONSTRAINT_ROWS) {
     const lo = cfg.constraints[r.min] as number;
     const hi = cfg.constraints[r.max] as number;
-    if (lo >= hi) issues.push(`${r.label}下限应小于上限`);
+    if (lo > hi) issues.push(`${r.label}下限不能大于上限`);
   }
-  const { heat_min, heat_max, heat_target } = cfg.constraints;
-  if (!(heat_min <= heat_target && heat_target <= heat_max)) issues.push('热值目标应在下限与上限之间');
   if (selectedCoals.length >= 2) {
     if (sumMin > 100.0001) issues.push(`配比下限之和 ${fixed(sumMin, 1)}% 超过 100%`);
     if (sumMax < 99.9999) issues.push(`配比上限之和 ${fixed(sumMax, 1)}% 不足 100%`);
     for (const c of selectedCoals) {
       const b = getBound(c.id);
-      if (b.min >= b.max) issues.push(`${c.name} 配比下限应小于上限`);
+      if (b.min > b.max) issues.push(`${c.name} 配比下限不能大于上限`);
     }
   }
   const canSolve = issues.length === 0;
 
   /* ---- solve ---- */
+  // Historical local settings may still contain the retired, unused heat target.
+  const submittedConstraints = { ...cfg.constraints };
+  delete submittedConstraints.heat_target;
+  const currentRequest: OptimizationRequest = {
+    optimization_target: OPTIMIZATION_TARGET,
+    selected_coal_ids: cfg.selectedIds,
+    constraints: {
+      ...submittedConstraints,
+      ratio_constraints: Object.fromEntries(cfg.selectedIds.map((id) => [String(id), getBound(id)])),
+    },
+    ga_params: cfg.gaParams,
+  };
+  const result = completed && matchesRequest(completed.request, currentRequest) ? completed.response : null;
+  const resultConstraints = {
+    ...DEFAULT_CONSTRAINTS,
+    ...completed?.request.constraints,
+    ...result?.constraints,
+    ...result?.input_snapshot?.constraints,
+  };
   const solveMut = useMutation({
-    mutationFn: () =>
-      runOptimization({
-        optimization_target: OPTIMIZATION_TARGET,
-        selected_coal_ids: cfg.selectedIds,
-        constraints: {
-          ...cfg.constraints,
-          ratio_constraints: Object.fromEntries(cfg.selectedIds.map((id) => [String(id), getBound(id)])),
-        },
-        ga_params: cfg.gaParams,
-      }),
-    onSuccess: (res) => {
-      setResult(res);
+    mutationFn: runOptimization,
+    onMutate: () => setCompleted(null),
+    onSuccess: (res, request) => {
+      setCompleted({ response: res, request });
       setActiveId(res.result.recommended_solution?.solution_id ?? '');
       if (res.status === 'success') toast.success('优化完成', `生成 ${res.result.pareto_solutions.length} 个 Pareto 候选方案`);
       else toast.warn('无可行方案', res.message);
+      if (res.history_saved === false) toast.warn('历史记录未保存', res.warning ?? '请先导出当前报告保存结果。');
+      else if (res.warning) toast.warn('参数提示', res.warning);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
     },
     onError: (e: Error) => toast.error('优化失败', e.message),
@@ -162,7 +175,8 @@ export default function SmartBlending() {
   const copyShare = async () => {
     if (!res || !activeSolution) return;
     const lines = [
-      '【智能混煤推荐方案】',
+      '【智能混煤方案】',
+      `方案: ${activeSolution.solution_id}`,
       ...activeSolution.coal_names.map((n, i) => `  ${n}: ${fixed(activeSolution.optimal_ratios[i] * 100, 1)}%`),
       `吨煤成本: ¥${fixed(activeSolution.total_price, 1)}`,
       `综合热值: ${num(activeSolution.total_heat)} kcal/kg`,
@@ -178,7 +192,7 @@ export default function SmartBlending() {
   };
 
   const exportMut = useMutation({
-    mutationFn: () => exportCurrentReport(result!),
+    mutationFn: exportCurrentReport,
     onSuccess: (blob) => {
       const ext = blob.type.includes('json') ? 'json' : 'xlsx';
       downloadBlob(blob, `混煤优化报告_${stamp()}.${ext}`);
@@ -231,17 +245,13 @@ export default function SmartBlending() {
                 <span className="step__title">工艺约束窗口</span>
                 <span className="text-xs text-mute">先锁定生产边界，再在可行域内寻优</span>
               </div>
-              {/* heat with target */}
+              {/* heat window */}
               <div className="cwin">
                 <div>
                   <div className="cwin__label">热值</div>
                   <div className="cwin__unit">kcal/kg</div>
                 </div>
                 <div className="row gap-10 wrap">
-                  <div style={{ minWidth: 120 }}>
-                    <div className="text-xs text-mute mb-4">目标</div>
-                    <input className="input" type="number" value={cfg.constraints.heat_target} onChange={(e) => patchConstraint('heat_target', +e.target.value)} />
-                  </div>
                   <div className="minmax grow" style={{ minWidth: 200 }}>
                     <input className="input" type="number" value={cfg.constraints.heat_min} onChange={(e) => patchConstraint('heat_min', +e.target.value)} />
                     <span className="minmax__sep">–</span>
@@ -330,8 +340,8 @@ export default function SmartBlending() {
                   <span className="readout__value is-ember">{selectedCoals.length}<span className="u">种</span></span>
                 </div>
                 <div className="readout" style={{ textAlign: 'right' }}>
-                  <span className="readout__label">目标热值</span>
-                  <span className="readout__value">{num(cfg.constraints.heat_target)}</span>
+                  <span className="readout__label">热值窗口</span>
+                  <span className="mono fw-500">{num(cfg.constraints.heat_min)}–{num(cfg.constraints.heat_max)}</span>
                 </div>
               </div>
 
@@ -382,7 +392,7 @@ export default function SmartBlending() {
                   </div>
                 </div>
               ) : (
-                <button className="btn btn--primary btn--lg btn--block" disabled={!canSolve} onClick={() => solveMut.mutate()}>
+                <button className="btn btn--primary btn--lg btn--block" disabled={!canSolve} onClick={() => solveMut.mutate(captureRequest(currentRequest))}>
                   <Icon name="play" size={16} fill /> 开始优化求解
                 </button>
               )}
@@ -416,22 +426,34 @@ export default function SmartBlending() {
 
       {/* ---------------- results ---------------- */}
       <div ref={resultRef} style={{ scrollMarginTop: 12 }}>
+        {completed && !result && (
+          <div className="verdict verdict--bad mt-24" role="status">
+            参数已更改，上次结果已失效。请重新求解后查看、分享或导出方案。
+          </div>
+        )}
+        {result && (result.history_saved === false || result.warning) && (
+          <div className="verdict verdict--bad mt-24" role="alert">
+            {result.warning ?? '本次结果未保存到历史记录，请先导出报告保存结果。'}
+          </div>
+        )}
         {result && res && (
           <section className="mt-24">
             <ResultsView
               res={res}
               feasible={feasible}
-              constraints={cfg.constraints}
+              constraints={resultConstraints}
               solutions={solutions}
               activeSolution={activeSolution}
               activeId={activeId}
               recommendedId={res.recommended_solution?.solution_id ?? ''}
               onPick={setActiveId}
-              onExport={() => exportMut.mutate()}
+              onExport={() => {
+                if (completed && activeSolution) exportMut.mutate(buildExportPayload(result, completed.request, activeSolution));
+              }}
               exporting={exportMut.isPending}
               onCopy={copyShare}
-              onResolve={() => solveMut.mutate()}
-              resolving={solveMut.isPending}
+              onResolve={() => solveMut.mutate(captureRequest(currentRequest))}
+              resolving={solveMut.isPending || !canSolve}
             />
           </section>
         )}
@@ -649,7 +671,7 @@ function ResultsView({
 
             {/* charts row */}
             <div className="grid grid--3">
-              <ChartPanel title="推荐配比" icon="beaker">
+              <ChartPanel title="当前方案配比" icon="beaker">
                 <RatioDonut names={s.coal_names} ratios={s.optimal_ratios} />
                 <div className="col gap-6 mt-8">
                   {s.coal_names.map((n, i) => (
@@ -686,12 +708,12 @@ function ResultsView({
 
             {/* algorithm meta */}
             <div className="row gap-10 wrap">
-              {res.active_constraints.map((a) => (
+              {(s.active_constraints ?? []).map((a) => (
                 <span key={a} className="pill pill--warn"><Icon name="target" size={12} /> {a} 贴边</span>
               ))}
               <span className="pill"><Icon name="refresh" size={12} /> 迭代 {num(res.iterations)}</span>
               <span className="pill"><Icon name="gauge" size={12} /> 耗时 {fixed(res.time_taken, 2)}s</span>
-              <span className="pill"><Icon name="zap" size={12} fill /> 质量风险 {fixed(res.fitness_value, 4)}</span>
+              <span className="pill"><Icon name="zap" size={12} fill /> 质量风险 {fixed(s.quality_penalty, 4)}</span>
             </div>
 
             {/* pareto */}

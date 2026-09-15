@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -17,6 +18,7 @@ from app.config import Config
 from app.extensions import db
 from app.models import Coal
 from app.utils.file_utils import safe_read_csv
+from app.utils.validation import validate_coal_data
 
 
 REQUIRED_FIELDS = (
@@ -111,7 +113,7 @@ def list_coals(
     ensure_coal_data_initialized()
 
     page = max(int(page or 1), 1)
-    page_size = int(page_size or 10)
+    page_size = int(10 if page_size is None else page_size)
 
     query = Coal.query
     if search:
@@ -187,6 +189,9 @@ def update_coal(coal_id: int, data: dict) -> Coal | None:
 
     merged = coal_to_api_dict(coal)
     merged.update(data)
+    for alias, canonical in (("moisture", "total_moisture"), ("mad", "air_dry_moisture")):
+        if alias in data and canonical not in data:
+            merged[canonical] = data[alias]
     payload = normalize_coal_payload(merged)
     for field, value in payload.items():
         setattr(coal, field, value)
@@ -278,34 +283,16 @@ def dataframe_row_to_payload(row: pd.Series) -> dict:
         for key, aliases in CSV_COLUMN_ALIASES.items()
     }
 
-    data = {
-        "id": _optional_int(raw.get("id")),
-        "name": _clean_string(raw.get("name")),
-        "type": _clean_string(raw.get("type")),
-        "supplier": _clean_string(raw.get("supplier")),
-        "price": _required_float(raw.get("price"), "价格"),
-        "calorific_value": _required_float(raw.get("calorific_value"), "热值"),
-        "ash_content": _required_float(raw.get("ash_content"), "灰分"),
-        "volatile_matter": _required_float(raw.get("volatile_matter"), "挥发分"),
-        "fixed_carbon": _required_float(raw.get("fixed_carbon"), "固定碳"),
-        "total_sulfur": _required_float(raw.get("total_sulfur"), "全硫"),
-        "total_moisture": _optional_float(raw.get("total_moisture")),
-        "air_dry_moisture": _optional_float(raw.get("air_dry_moisture")),
-        "hgi": _optional_float(raw.get("hgi")),
-        "burnout_rate": _optional_float(raw.get("burnout_rate")),
-        "carbon_content": _optional_float(raw.get("carbon_content")),
-        "hydrogen_content": _optional_float(raw.get("hydrogen_content")),
-        "nitrogen_content": _optional_float(raw.get("nitrogen_content")),
-    }
-    if not data["name"]:
-        raise ValueError("煤种名称不能为空")
-    if not data["type"]:
-        raise ValueError("煤种类型不能为空")
+    data = normalize_coal_payload(raw)
+    data["id"] = _optional_int(raw.get("id"))
     return data
 
 
 def normalize_coal_payload(data: dict) -> dict:
     """将 API 入参归一化为 Coal ORM 字段。"""
+    valid, errors = validate_coal_data(data)
+    if not valid:
+        raise ValueError("; ".join(errors))
     normalized = {
         "name": _clean_string(data.get("name")),
         "type": _clean_string(data.get("type")),
@@ -410,7 +397,10 @@ def _required_float(value, label: str) -> float:
 def _optional_float(value) -> float | None:
     if value is None or pd.isna(value) or str(value).strip() == "":
         return None
-    return float(value)
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("数值必须为有限值")
+    return parsed
 
 
 def _optional_int(value) -> int | None:

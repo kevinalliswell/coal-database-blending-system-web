@@ -32,7 +32,6 @@ export const COAL_FIELDS: FieldMeta[] = [
 ];
 
 export const DEFAULT_CONSTRAINTS: BlendingConstraints = {
-  heat_target: 6800,
   heat_min: 6000,
   heat_max: 7800,
   ash_min: 0,

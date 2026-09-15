@@ -4,6 +4,7 @@
 import json
 import logging
 import math
+from copy import deepcopy
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
@@ -13,7 +14,7 @@ from app.extensions import db
 from app.models import OptimizationHistory
 from app.services.blending_service import OptimizedSmartBlendingAlgorithm
 from app.services.coal_data_service import coal_to_algorithm_dict, get_coals_by_ids
-from app.utils.validation import validate_optimization_params
+from backend.utils.optimization_validation import normalize_optimization_request
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,31 @@ def _build_parameter_warnings(data):
     return warnings
 
 
-def _build_api_result(coal_names, algorithm_result, time_taken):
+def _build_input_snapshot(selected_coals, coals, params, ga_config):
+    """Capture effective inputs before optimization or later coal edits can change them."""
+    constraint_keys = {
+        'heat_value': 'heat_target', 'ash_limit': 'ash_max',
+        'sulfur_limit': 'sulfur_max', 'price_limit': 'price_max',
+    }
+    constraints = {
+        constraint_keys.get(key, key): value
+        for key, value in params.items() if key != 'ratio_constraints'
+    }
+    constraints['ratio_constraints'] = {
+        str(coal.id): {'min': lower * 100, 'max': upper * 100}
+        for coal, lower, upper in zip(selected_coals, params['ratio_constraints']['min'], params['ratio_constraints']['max'])
+    }
+    return deepcopy({
+        'schema_version': 1,
+        'coals': [coal.to_dict() for coal in selected_coals],
+        'algorithm_coals': coals,
+        'algorithm_params': params,
+        'ga_config': ga_config,
+        'constraints': constraints,
+    })
+
+
+def _build_api_result(coal_names, algorithm_result, time_taken, input_snapshot=None):
     summary = algorithm_result.get('summary', {})
     coal_results = algorithm_result.get('coal_results', [])
     ratio_map = {item['name']: item['ratio'] / 100.0 for item in coal_results}
@@ -136,11 +161,15 @@ def _build_api_result(coal_names, algorithm_result, time_taken):
         'timestamp': timestamp,
     }
 
-    return _sanitize_json_value({
+    payload = {
         'status': algorithm_result.get('status', 'success'),
         'message': algorithm_result.get('message', '优化计算完成'),
         'result': result_payload,
-    })
+    }
+    if input_snapshot is not None:
+        payload['input_snapshot'] = input_snapshot
+        payload['constraints'] = input_snapshot['constraints']
+    return _sanitize_json_value(payload)
 
 
 def _save_optimization_history(request_data, response_payload):
@@ -150,7 +179,7 @@ def _save_optimization_history(request_data, response_payload):
         timestamp=result.get('timestamp', datetime.now().isoformat()),
         coal_names=_dump_json(result.get('coal_names', [])),
         optimal_ratios=_dump_json(result.get('optimal_ratios', [])),
-        constraints=_dump_json(request_data.get('constraints', {})),
+        constraints=_dump_json(response_payload.get('constraints', request_data.get('constraints', {}))),
         total_price=result.get('total_price'),
         total_heat=result.get('total_heat'),
         total_ash=result.get('total_ash'),
@@ -173,13 +202,11 @@ def _save_optimization_history(request_data, response_payload):
 def run_optimization():
     """执行喷煤工艺混煤优化。"""
     try:
-        data = request.json
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({'status': 'error', 'message': '请求数据为空'}), 400
 
-        is_valid, errors = validate_optimization_params(data)
-        if not is_valid:
-            return jsonify({'status': 'error', 'message': '; '.join(errors)}), 400
+        data = normalize_optimization_request(data)
 
         optimization_target = data.get('optimization_target', '喷煤性价比最优')
         selected_coal_ids = data.get('selected_coal_ids', [])
@@ -209,6 +236,7 @@ def run_optimization():
 
         algorithm = OptimizedSmartBlendingAlgorithm()
         algorithm.set_optimizer_config(ga_config)
+        input_snapshot = _build_input_snapshot(selected_coals, coals, params, algorithm.optimizer.config)
 
         start_time = datetime.now()
         algorithm_result = algorithm.calculate(
@@ -219,7 +247,7 @@ def run_optimization():
         end_time = datetime.now()
 
         time_taken = (end_time - start_time).total_seconds()
-        payload = _build_api_result(coal_names, algorithm_result, time_taken)
+        payload = _build_api_result(coal_names, algorithm_result, time_taken, input_snapshot)
         parameter_warnings = _build_parameter_warnings(data)
         if parameter_warnings:
             payload['parameter_warnings'] = parameter_warnings

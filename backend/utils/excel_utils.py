@@ -233,7 +233,7 @@ def _write_performance_block(ws, row, result, constraints):
     ]
 
     for indicator, actual, unit, target, ok, review in performance_rows:
-        status_text = '达标' if ok else '偏离'
+        status_text = '未校验' if ok is None else '达标' if ok else '偏离'
         values = [
             indicator,
             _format_number(actual, 2 if unit == '%' or unit == '元/吨' else 0, ''),
@@ -243,8 +243,8 @@ def _write_performance_block(ws, row, result, constraints):
             review,
         ]
         _write_table_row(ws, row, values)
-        ws[f'E{row}'].font = STATUS_OK_FONT if ok else STATUS_BAD_FONT
-        ws[f'E{row}'].fill = SUCCESS_FILL if ok else ERROR_FILL
+        ws[f'E{row}'].font = SMALL_FONT if ok is None else STATUS_OK_FONT if ok else STATUS_BAD_FONT
+        ws[f'E{row}'].fill = LABEL_FILL if ok is None else SUCCESS_FILL if ok else ERROR_FILL
         row += 1
 
     return row + 1
@@ -459,6 +459,8 @@ def _range_text(min_value, max_value):
 
 
 def _within_range(value, min_value=None, max_value=None):
+    if min_value is None and max_value is None:
+        return None
     if value is None:
         return False
     if min_value is not None and value < min_value:

@@ -54,8 +54,8 @@ export function CoalForm({
         continue;
       }
       const n = Number(raw);
-      if (Number.isNaN(n)) {
-        errs[f.key] = '需为数字';
+      if (!Number.isFinite(n)) {
+        errs[f.key] = '需为有限数字';
         continue;
       }
       draft[f.key] = n;
@@ -65,8 +65,8 @@ export function CoalForm({
       (a, k) => a + (Number(values[k]) || 0),
       0
     );
-    if (values.ash_content && values.volatile_matter && values.fixed_carbon && (proxSum < 90 || proxSum > 110)) {
-      errs.fixed_carbon = '灰分+挥发分+固定碳应在 90–110 之间';
+    if (values.ash_content && values.volatile_matter && values.fixed_carbon && (proxSum > 100 + 1e-6)) {
+      errs.fixed_carbon = '灰分+挥发分+固定碳不能超过100%';
     }
     setErrors(errs);
     if (Object.keys(errs).length) return null;
