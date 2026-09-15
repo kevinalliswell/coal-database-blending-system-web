@@ -13,7 +13,7 @@ from app.extensions import db
 from app.models import OptimizationHistory
 from app.services.blending_service import OptimizedSmartBlendingAlgorithm
 from app.services.coal_data_service import coal_to_algorithm_dict, get_coals_by_ids
-from app.utils.validation import validate_optimization_params
+from backend.utils.optimization_validation import normalize_optimization_request
 
 logger = logging.getLogger(__name__)
 
@@ -161,13 +161,11 @@ def _save_optimization_history(request_data, response_payload):
 def run_optimization():
     """执行喷煤工艺混煤优化。"""
     try:
-        data = request.json
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({'status': 'error', 'message': '请求数据为空'}), 400
 
-        is_valid, errors = validate_optimization_params(data)
-        if not is_valid:
-            return jsonify({'status': 'error', 'message': '; '.join(errors)}), 400
+        data = normalize_optimization_request(data)
 
         optimization_target = data.get('optimization_target', '喷煤性价比最优')
         selected_coal_ids = data.get('selected_coal_ids', [])
