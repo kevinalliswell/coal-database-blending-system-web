@@ -18,19 +18,19 @@ def allowed_file(filename, allowed_extensions=None):
 def safe_read_csv(file_path):
     """安全读取CSV文件，自动处理编码问题"""
     try:
-        return pd.read_csv(file_path, encoding='utf-8')
+        return pd.read_csv(file_path, encoding='utf-8', keep_default_na=False)
     except UnicodeDecodeError:
-        return pd.read_csv(file_path, encoding='gbk')
+        return pd.read_csv(file_path, encoding='gbk', keep_default_na=False)
 
 def safe_read_excel(file_path):
     """安全读取Excel文件，尝试多种引擎"""
     try:
-        return pd.read_excel(file_path, engine='openpyxl')
+        return pd.read_excel(file_path, engine='openpyxl', keep_default_na=False)
     except Exception:
         try:
-            return pd.read_excel(file_path, engine='xlrd')
+            return pd.read_excel(file_path, engine='xlrd', keep_default_na=False)
         except Exception:
-            return pd.read_excel(file_path)
+            return pd.read_excel(file_path, keep_default_na=False)
 
 def save_uploaded_file(file, upload_folder):
     """保存上传的文件，返回保存路径"""
@@ -112,4 +112,4 @@ def merge_coal_data(new_df, existing_df):
             new_df['序号'] = range(1, len(new_df) + 1)
         combined_df = new_df
     
-    return combined_df 
+    return combined_df
