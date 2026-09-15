@@ -145,6 +145,7 @@ function DetailDrawer({ id, onClose }: { id: number | null; onClose: () => void 
   });
   const [showRaw, setShowRaw] = useState(false);
   const d = detail.data;
+  const historicalResult = d && ('result' in d.result_payload ? d.result_payload.result : d.result_payload);
 
   return (
     <Drawer open={id !== null} onClose={onClose} title="优化历史详情" subtitle={d ? shortDate(d.date) : ''} icon={<Icon name="beaker" size={18} />} wide>
@@ -158,7 +159,7 @@ function DetailDrawer({ id, onClose }: { id: number | null; onClose: () => void 
             </span>
             <div>
               <div className="fw-600 text-sm">{d.constraints_satisfied ? '满足全部工艺约束' : '存在约束冲突'}</div>
-              <div className="text-xs text-mute">目标 {d.result_payload?.optimization_target ?? '多目标Pareto最优'}</div>
+              <div className="text-xs text-mute">目标 {historicalResult?.optimization_target ?? '多目标Pareto最优'}</div>
             </div>
           </div>
 

@@ -357,7 +357,7 @@ export async function mockOptimize(req: OptimizationRequest): Promise<Optimizati
       within(b.price, c.price_min, c.price_max);
     if (!ok) continue;
     const heatSpan = Math.max(1, c.heat_max - c.heat_min);
-    const qp = Math.abs(b.heat - c.heat_target) / heatSpan + b.sulfur * 0.05 + b.ash * 0.002;
+    const qp = Math.abs(b.heat - (c.heat_target ?? (c.heat_min + c.heat_max) / 2)) / heatSpan + b.sulfur * 0.05 + b.ash * 0.002;
     feasible.push({ ratios: w, ...b, qp });
   }
 

@@ -54,7 +54,8 @@ export interface RatioBound {
 }
 
 export interface BlendingConstraints {
-  heat_target: number;
+  /** Legacy historical field; not used by the optimizer. */
+  heat_target?: number;
   heat_min: number;
   heat_max: number;
   ash_min: number;
@@ -126,6 +127,7 @@ export interface ConstraintViolation {
 }
 
 export interface OptimizationResult {
+  selected_solution_id?: string;
   objective_type: string;
   optimization_target: string;
   coal_names: string[];
@@ -165,6 +167,15 @@ export interface OptimizationResponse {
   message: string;
   history_saved?: boolean;
   warning?: string;
+  constraints?: Partial<BlendingConstraints>;
+  input_snapshot?: {
+    schema_version: number;
+    coals: Coal[];
+    algorithm_coals: Record<string, unknown>[];
+    algorithm_params: Record<string, unknown>;
+    ga_config: Record<string, unknown>;
+    constraints: Partial<BlendingConstraints>;
+  };
   result: OptimizationResult;
 }
 
@@ -191,7 +202,7 @@ export interface OptimizationHistoryItem {
 export interface OptimizationHistoryDetail extends OptimizationHistoryItem {
   constraints: Partial<BlendingConstraints>;
   request_payload: OptimizationRequest;
-  result_payload: OptimizationResult;
+  result_payload: OptimizationResponse | OptimizationResult;
 }
 
 /* ---------- Replacement ratio ---------- */
