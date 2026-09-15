@@ -356,7 +356,7 @@ def _write_constraints_block(ws, row, result, constraints):
         '目标函数',
         result.get('optimization_target') or '多目标Pareto最优',
         'E',
-        '质量风险',
+        '质量偏离分',
         _format_number(result.get('fitness_value'), 4, ''),
     )
     _write_label_value_row(
