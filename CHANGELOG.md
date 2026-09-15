@@ -1,6 +1,69 @@
 # CHANGELOG
 
 
+## v1.1.0 (2026-09-15)
+
+### Bug Fixes
+
+- Accelerate constrained NSGA-II and expose effective controls
+  ([`6e746e1`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/6e746e129943ff729d5d22cbcb20b0dcf074b3d5))
+
+- Bind blending results and reports to immutable run inputs
+  ([`9b43d47`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/9b43d47c1f5995389d138c831b82efacb1561882))
+
+- Distinguish basis-checked blends from screening results
+  ([`8586068`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/8586068535396565de1dbaa8810466e3b8fa9fc2))
+
+- Label heuristic quality scores and missing assay bases clearly
+  ([`5a88675`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/5a886759c494e018c51ee92690bb1bc425e4bffc))
+
+- Preserve calculation mode and basis validation in run snapshots
+  ([`4337b24`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/4337b247954c0c52570587c6af7b7ae82b591fa4))
+
+- Preserve complete Pareto recommendations and final offspring
+  ([`2d81b1f`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/2d81b1f6942e4f5bd488be7fdb4e8c1027105203))
+
+- Validate coal data consistently and preserve full exports
+  ([`88b78b8`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/88b78b88a35b8bcc4824924aa74fe51647958bca))
+
+- Validate unique coal identities and optimization bounds
+  ([`20fe6e3`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/20fe6e3bcb1170022d4df064c1392bd8b5164dd8))
+
+### Chores
+
+- Remove dead code and stale docs
+  ([`89ee125`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/89ee125ee47cbeacfb29474cab1b9fb9939fbdc3))
+
+Delete unreferenced compat shims and orphaned files confirmed via a full repo-wide grep + Docker/CI
+  reference check, and sync the docs that described them:
+
+- backend/app.py, backend/config.py: historical compat layers never imported anywhere;
+  app.create_app() via run.py/wsgi.py is the only entry point in use. -
+  backend/requirements_modular.txt: stale dependency list (Flask 2.3.3 era) superseded by
+  requirements.txt; not referenced by Docker or CI. - backend/service/ustb_evaluation.py:
+  zero-importer algorithm module. - static/images/*.png + the /images compat route in
+  app/routes/pages.py (and its STATIC_IMAGES_DIR config): leftover from the removed Jinja/matplotlib
+  report frontend, not linked from the current SPA. - GA_OPTIMIZATION_PLAN.md: V1 algorithm planning
+  doc, already implemented and documented in docs/ARCHITECTURE.md section 6.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Continuous Integration
+
+- Run regression tests for stacked fix pull requests
+  ([`3865127`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/3865127e60103bb0ec1cff5f95d54f57b463edcc))
+
+### Documentation
+
+- Add Windows Server deployment guide
+  ([`ee550b9`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/ee550b95397ab017ef672a016e41e6c2c629d58e))
+
+### Features
+
+- Require declared coal bases for verified blending
+  ([`13fdc52`](https://github.com/kevinalliswell/coal-database-blending-system-web/commit/13fdc5222efacd903d89dbbf4055790a8e662833))
+
+
 ## v1.0.1 (2026-07-02)
 
 ### Bug Fixes
