@@ -27,8 +27,9 @@ def _create_and_send_report(data: dict):
         # 创建Excel工作簿
         wb = Workbook()
         
-        # 获取用户设置的约束条件（仅在导出当前结果时存在）
-        user_constraints = data.get('constraints', {})
+        # Prefer the completed run's snapshot; old histories retain top-level constraints.
+        snapshot = data.get('input_snapshot') or {}
+        user_constraints = snapshot.get('constraints') or data.get('constraints', {})
         
         # 创建统一的A4排版报告
         create_unified_a4_report(wb, data, user_constraints)
