@@ -576,13 +576,17 @@ export function mockOptHistoryDetail(id: number): OptimizationHistoryDetail | nu
 
 export function mockTheoryRatio(req: TheoryRatioRequest): TheoryRatioResponse {
   const { coal_params: p, coke_params: k, blast_furnace_params: bf } = req;
-  const hydrogen_saving_carbon = p.hydrogen_content * 3 * bf.eta_co;
-  const coalSlagCarbon = p.ash_content * p.sio2_content * bf.slag_basicity * 0.12;
-  const heatCarbon = (p.decomposition_heat + p.physical_heat) / 8100; // fraction of carbon-equivalent
-  const cokeSlagCarbon = k.ash_content * k.sio2_content * bf.slag_basicity * 0.12;
+  const blastEnthalpy = bf.hot_blast_enthalpy ?? 1.3 * bf.wind_temperature;
+  const carbonHeat = 1.2 * blastEnthalpy + 9794 - 2758;
+  const etaH = Math.max(0, Math.min(1, 1.41 * bf.eta_co - 1.07 * bf.eta_co ** 2));
+  const hydrogen_saving_carbon = p.hydrogen_content * etaH * (6 + 62222 / carbonHeat);
+  const coalSlagCarbon = p.ash_content * (1 + p.sio2_content * bf.slag_basicity) * bf.slag_enthalpy / carbonHeat;
+  const heatCarbon = (p.decomposition_heat + p.physical_heat) * 4.184 / carbonHeat;
+  const cokeSlagCarbon = k.ash_content * (1 + k.sio2_content * bf.slag_basicity) * bf.slag_enthalpy / carbonHeat;
   const numerator = p.carbon_content + hydrogen_saving_carbon - coalSlagCarbon - heatCarbon;
   const denominator = k.carbon_content - cokeSlagCarbon;
-  const ratio = denominator > 0 ? numerator / denominator : 0;
+  if (!(denominator > 0)) throw { status: 400, message: '置换比计算错误: 焦炭有效碳量必须大于零' };
+  const ratio = numerator / denominator;
   const details: Record<string, number> = {
     煤粉含碳量: r6(p.carbon_content),
     煤粉中氢参加还原而节约的碳量: r6(hydrogen_saving_carbon),
@@ -598,11 +602,14 @@ export function mockTheoryRatio(req: TheoryRatioRequest): TheoryRatioResponse {
     status: 'success',
     ratio: r6(ratio),
     details,
-    carbon_burning_heat: r6(p.carbon_content * 8100),
+    carbon_burning_heat: r6(carbonHeat),
     hydrogen_saving_carbon: r6(hydrogen_saving_carbon),
     decomposition_heat_consumption: r6(p.decomposition_heat),
     physical_heat_consumption: r6(p.physical_heat),
-    hydrogen_replacement_heat: r6(p.hydrogen_content * 34000),
+    total_heat_consumption: r6(p.decomposition_heat + p.physical_heat),
+    effective_hot_blast_enthalpy: r6(blastEnthalpy),
+    hot_blast_enthalpy_source: bf.hot_blast_enthalpy == null ? 'temperature_estimate' : 'provided',
+    hydrogen_replacement_heat: 62222,
   };
   saveRep('theory', 'theory', res.ratio, req, res, theorySummary(p, k, bf));
   return res;

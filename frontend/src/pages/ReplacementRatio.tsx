@@ -51,7 +51,7 @@ const THEORY_GROUPS: Group[] = [
       { id: 'slag_basicity', label: '炉渣碱度', def: 1.15, example: 1.2 },
       { id: 'slag_enthalpy', label: '炉渣热焓', unit: 'kJ/kg', def: 1800, example: 1850 },
       { id: 'wind_temp', label: '风温', unit: '°C', def: 1180, example: 1220 },
-      { id: 'hot_blast', label: '鼓风热焓', unit: 'kJ/m³', def: 1.5, example: 1.6 },
+      { id: 'hot_blast', label: '实测鼓风热焓', unit: 'kJ/m³', def: 1534, example: 1586 },
     ],
   },
 ];
@@ -87,16 +87,22 @@ export default function ReplacementRatio() {
   const [mode, setMode] = useState<Mode>('theory');
   const [values, setValues] = useState<Record<string, number>>(() => initValues('theory'));
   const [advanced, setAdvanced] = useState(false);
+  const [useMeasuredHotBlast, setUseMeasuredHotBlast] = useState(false);
   const [theoryRes, setTheoryRes] = useState<TheoryRatioResponse | null>(null);
   const [actualRes, setActualRes] = useState<ActualRatioResponse | null>(null);
 
   useEffect(() => {
     setValues(initValues(mode));
+    setUseMeasuredHotBlast(false);
     setTheoryRes(null);
     setActualRes(null);
   }, [mode]);
 
-  const set = (id: string, v: number) => setValues((s) => ({ ...s, [id]: v }));
+  const set = (id: string, v: number) => {
+    setValues((s) => ({ ...s, [id]: v }));
+    setTheoryRes(null);
+    setActualRes(null);
+  };
 
   const theoryMut = useMutation({
     mutationFn: () =>
@@ -119,7 +125,7 @@ export default function ReplacementRatio() {
           slag_basicity: values.slag_basicity,
           slag_enthalpy: values.slag_enthalpy,
           wind_temperature: values.wind_temp,
-          hot_blast_enthalpy: values.hot_blast,
+          hot_blast_enthalpy: useMeasuredHotBlast ? values.hot_blast : null,
         },
       }),
     onSuccess: (r) => {
@@ -158,10 +164,13 @@ export default function ReplacementRatio() {
     const ex: Record<string, number> = {};
     groups.forEach((g) => g.fields.forEach((f) => (ex[f.id] = f.example)));
     setValues(ex);
+    setTheoryRes(null);
+    setActualRes(null);
     toast.info('已载入示例参数');
   };
   const reset = () => {
     setValues(initValues(mode));
+    setUseMeasuredHotBlast(false);
     setTheoryRes(null);
     setActualRes(null);
   };
@@ -175,7 +184,7 @@ export default function ReplacementRatio() {
   const groups = mode === 'theory' ? THEORY_GROUPS : [ACTUAL_BASIC];
 
   return (
-    <div className="page">
+    <fieldset className="page" disabled={running} style={{ border: 0, margin: 0, minWidth: 0 }}>
       <div className="page__head">
         <div>
           <h1 className="page__title">置换比计算</h1>
@@ -185,15 +194,25 @@ export default function ReplacementRatio() {
 
       {/* mode cards */}
       <div className="grid grid--2 mb-20">
-        <ModeCard active={mode === 'theory'} icon="beaker" title="理论置换比" desc="基于煤粉/焦炭成分与高炉工艺参数的碳氢热平衡模型" onClick={() => setMode('theory')} />
-        <ModeCard active={mode === 'actual'} icon="scale" title="实际置换比" desc="基于焦比、煤比调整前后的生产数据反算，支持生产因素修正" onClick={() => setMode('actual')} />
+        <ModeCard active={mode === 'theory'} icon="beaker" title="理论置换比" desc="基于煤粉/焦炭成分与高炉工艺参数的碳氢热平衡模型" onClick={() => !running && setMode('theory')} />
+        <ModeCard active={mode === 'actual'} icon="scale" title="实际置换比" desc="基于焦比、煤比调整前后的生产数据反算，支持生产因素修正" onClick={() => !running && setMode('actual')} />
       </div>
 
       <div className="split">
         <div className="col gap-18">
           {groups.map((g) => (
-            <ParamPanel key={g.title} title={g.title} fields={g.fields} values={values} onChange={set} />
+            <ParamPanel key={g.title} title={g.title} fields={g.fields.filter((f) => f.id !== 'hot_blast' || useMeasuredHotBlast)} values={values} onChange={set} />
           ))}
+
+          {mode === 'theory' && (
+            <div className="panel panel__body">
+              <label className="row gap-8">
+                <input type="checkbox" checked={useMeasuredHotBlast} onChange={(e) => { setUseMeasuredHotBlast(e.target.checked); setTheoryRes(null); }} />
+                使用实测鼓风热焓（kJ/m³）
+              </label>
+              <div className="text-xs text-mute mt-8">未启用时按 1.3 × 风温估算鼓风热焓；启用后实测值覆盖风温估算。体积口径须与模型风量一致。</div>
+            </div>
+          )}
 
           {mode === 'actual' && (
             <section className="panel">
@@ -203,7 +222,7 @@ export default function ReplacementRatio() {
                     <span className="tico"><Icon name="sliders" size={15} /></span> {ACTUAL_ADV.title}
                   </div>
                   <label className="switch">
-                    <input type="checkbox" checked={advanced} onChange={(e) => setAdvanced(e.target.checked)} />
+                    <input type="checkbox" checked={advanced} onChange={(e) => { setAdvanced(e.target.checked); setActualRes(null); }} />
                     <span className="switch__track" />
                     <span className="text-sm">{advanced ? '已启用修正' : '启用修正'}</span>
                   </label>
@@ -279,14 +298,14 @@ export default function ReplacementRatio() {
               <div className="divider" style={{ margin: '2px 0' }} />
               <div className="text-xs text-mute">
                 {mode === 'theory'
-                  ? '理论模型基于煤粉与焦炭的碳、氢、灰分及高炉工艺参数，反映置换比的理论上限。'
+                  ? '理论模型基于煤粉与焦炭的碳、氢、灰分及高炉工艺参数，提供简化热平衡估算；结果需结合现场数据校核。'
                   : '实际置换比由焦比与煤比的调整量反算，修正模式进一步纳入产量、渣比与碳效率影响。'}
               </div>
             </div>
           </div>
         </aside>
       </div>
-    </div>
+    </fieldset>
   );
 }
 

@@ -9,7 +9,7 @@ from flask import Blueprint, request, jsonify
 
 from app.extensions import db
 from app.models import ReplacementRatioHistory
-from app.utils.validation import validate_replacement_ratio_params
+from backend.utils.replacement_validation import normalize_theory_request
 from app.services.replacement_ratio_service import (
     ReplacementRatioCalculator,
     ActualReplacementRatioCalculator,
@@ -99,14 +99,12 @@ def _save_replacement_ratio_history(request_data, response_payload, calculation_
 def calculate_theory_ratio():
     """理论置换比计算API"""
     try:
-        data = request.json
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({'status': 'error', 'message': '请求数据为空'}), 400
         
         # 验证参数
-        is_valid, errors = validate_replacement_ratio_params(data)
-        if not is_valid:
-            return jsonify({'status': 'error', 'message': '; '.join(errors)}), 400
+        data = normalize_theory_request(data)
         
         # 提取参数
         coal_params_data = data.get('coal_params', {})
@@ -134,7 +132,7 @@ def calculate_theory_ratio():
             slag_basicity=blast_furnace_params_data.get('slag_basicity', 1.15),
             slag_enthalpy=blast_furnace_params_data.get('slag_enthalpy', 1800.0),
             wind_temperature=blast_furnace_params_data.get('wind_temperature', 1180.0),
-            hot_blast_enthalpy=blast_furnace_params_data.get('hot_blast_enthalpy', 1.5)
+            hot_blast_enthalpy=blast_furnace_params_data.get('hot_blast_enthalpy')
         )
         
         # 创建计算器并执行计算
@@ -144,7 +142,6 @@ def calculate_theory_ratio():
         # 获取额外的热量平衡数据
         carbon_burning_heat = calculator.calculate_carbon_burning_heat()
         hydrogen_saving_carbon = calculator.calculate_hydrogen_saving_carbon_percentage()
-        decomposition_consumption = calculator.calculate_carbon_consumed_by_decomposition()
         
         # 格式化结果
         result = {
@@ -153,8 +150,11 @@ def calculate_theory_ratio():
             'details': details,
             'carbon_burning_heat': carbon_burning_heat,
             'hydrogen_saving_carbon': hydrogen_saving_carbon,
-            'decomposition_heat_consumption': decomposition_consumption * carbon_burning_heat / 4.184,  # 转换为kcal/kg
+            'decomposition_heat_consumption': coal_params.decomposition_heat,  # kcal/kg
             'physical_heat_consumption': coal_params.physical_heat,
+            'total_heat_consumption': coal_params.decomposition_heat + coal_params.physical_heat,
+            'effective_hot_blast_enthalpy': calculator.effective_hot_blast_enthalpy(),  # kJ/m³
+            'hot_blast_enthalpy_source': 'temperature_estimate' if blast_furnace_params.hot_blast_enthalpy is None else 'provided',
             'hydrogen_replacement_heat': 62222  # kJ/kg，氢气参加直接还原替代的热量
         }
         
@@ -162,6 +162,8 @@ def calculate_theory_ratio():
         logger.info(f"理论置换比计算成功: {ratio:.6f}")
         return jsonify(_sanitize_json_value(result))
         
+    except ValueError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
     except Exception as e:
         logger.error(f"理论置换比计算失败: {str(e)}")
         return jsonify({'status': 'error', 'message': f'计算失败: {str(e)}'}), 500

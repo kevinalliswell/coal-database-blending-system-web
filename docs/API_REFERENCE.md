@@ -614,9 +614,9 @@ Content-Type：`multipart/form-data`。
 | | `slag_basicity` | float | 否 | `1.15` | 炉渣碱度 |
 | | `slag_enthalpy` | float | 否 | `1800.0` | 渣焓 |
 | | `wind_temperature` | float | 否 | `1180.0` | 风温 |
-| | `hot_blast_enthalpy` | float | 否 | `1.5` | 热风焓 |
+| | `hot_blast_enthalpy` | float/null | 否 | `null` | 实测热风焓（kJ/m³）；省略或 null 时按 1.3 × 风温估算，显式数值覆盖估算 |
 
-校验规则（`validate_replacement_ratio_params`）：`coal_params` 的 `carbon_content`、`hydrogen_content`、`ash_content` 与 `coke_params` 的 `carbon_content`、`ash_content` 必填且须为正数。
+校验规则（`normalize_theory_request`）：`coal_params` 的 `carbon_content`、`hydrogen_content`、`ash_content` 与 `coke_params` 的 `carbon_content`、`ash_content` 必填；组分和利用率在 0–1 内，碳含量和碱度须为正，其余热量/温度非负。全部数值必须有限，非法对象/数值返回 400。焦炭扣除造渣耗碳后的有效碳量须大于零。
 
 请求体示例：
 
@@ -640,32 +640,35 @@ Content-Type：`multipart/form-data`。
     "slag_basicity": 1.15,
     "slag_enthalpy": 1800.0,
     "wind_temperature": 1180.0,
-    "hot_blast_enthalpy": 1.5
+    "hot_blast_enthalpy": 1534.0
   }
 }
 ```
 
-成功响应：
+成功响应（与上面请求对应）：
 
 ```json
 {
   "status": "success",
-  "ratio": 0.8523,
+  "ratio": 0.7466808615014109,
   "details": {
     "煤粉含碳量": 0.78,
-    "煤粉中氢参加还原而节约的碳量": 1.32,
-    "煤粉中灰分造渣所消耗的碳": 0.21,
-    "煤粉分解热和加热至1500°C物理热所消耗的碳": 0.65,
+    "煤粉中氢参加还原而节约的碳量": 0.18909435000007102,
+    "煤粉中灰分造渣所消耗的碳": 0.03776496034607066,
+    "煤粉分解热和加热至1500°C物理热所消耗的碳": 0.31579848594087967,
     "焦炭含碳量": 0.86,
-    "焦炭中灰分造渣所消耗的碳": 0.19,
-    "置换比分子": 78.46,
-    "置换比分母": 85.02,
-    "理论置换比": 0.8523
+    "焦炭中灰分造渣所消耗的碳": 0.03564392573900505,
+    "置换比分子": 0.6155309037131207,
+    "置换比分母": 0.8243560742609949,
+    "理论置换比": 0.7466808615014109
   },
-  "carbon_burning_heat": 9797.0,
-  "hydrogen_saving_carbon": 1.32,
-  "decomposition_heat_consumption": 152.3,
-  "physical_heat_consumption": 450.0,
+  "carbon_burning_heat": 8876.8,
+  "hydrogen_saving_carbon": 0.18909435000007102,
+  "decomposition_heat_consumption": 220,
+  "physical_heat_consumption": 450,
+  "total_heat_consumption": 670,
+  "effective_hot_blast_enthalpy": 1534,
+  "hot_blast_enthalpy_source": "provided",
   "hydrogen_replacement_heat": 62222
 }
 ```
@@ -677,9 +680,12 @@ Content-Type：`multipart/form-data`。
 | `ratio` | float | 理论置换比 |
 | `details` | object | 计算明细，中文键见上（`煤粉含碳量`、`煤粉中氢参加还原而节约的碳量`、`煤粉中灰分造渣所消耗的碳`、`煤粉分解热和加热至1500°C物理热所消耗的碳`、`焦炭含碳量`、`焦炭中灰分造渣所消耗的碳`、`置换比分子`、`置换比分母`、`理论置换比`） |
 | `carbon_burning_heat` | float | 碳燃烧净有效热量（kJ/kg） |
-| `hydrogen_saving_carbon` | float | 氢节约碳量百分比 |
+| `hydrogen_saving_carbon` | float | 氢节约的碳质量（kg C/kg 煤，以小数表达） |
 | `decomposition_heat_consumption` | float | 分解热消耗（kcal/kg） |
-| `physical_heat_consumption` | float | 物理热消耗（等于 `coal_params.physical_heat`） |
+| `physical_heat_consumption` | float | 物理热消耗（kcal/kg，等于 `coal_params.physical_heat`） |
+| `total_heat_consumption` | float | 分解热与物理热之和（kcal/kg） |
+| `effective_hot_blast_enthalpy` | float | 本次实际使用的鼓风热焓（kJ/m³） |
+| `hot_blast_enthalpy_source` | string | provided 或 temperature_estimate |
 | `hydrogen_replacement_heat` | int | 氢直接还原替代热（`62222` kJ/kg，常量） |
 
 计算完成后写入置换比历史（`calculation_type=theory`，`calculation_mode=theory`）。校验失败返回 `400`；异常返回 `500`（`计算失败: ...`）。

@@ -214,7 +214,7 @@ export interface BlastFurnaceParams {
   slag_basicity: number;
   slag_enthalpy: number;
   wind_temperature: number;
-  hot_blast_enthalpy: number;
+  hot_blast_enthalpy?: number | null;
 }
 export interface TheoryRatioRequest {
   coal_params: TheoryCoalParams;
@@ -229,6 +229,9 @@ export interface TheoryRatioResponse {
   hydrogen_saving_carbon?: number;
   decomposition_heat_consumption?: number;
   physical_heat_consumption?: number;
+  total_heat_consumption?: number;
+  effective_hot_blast_enthalpy?: number;
+  hot_blast_enthalpy_source?: 'provided' | 'temperature_estimate';
   hydrogen_replacement_heat?: number;
   message?: string;
 }
