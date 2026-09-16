@@ -126,6 +126,43 @@ def test_old_revision_gets_online_backup_before_upgrade(tmp_path, resources):
         assert current.execute('select analysis_basis,name,fixed_carbon from coal_data').fetchall() == [('unknown', '旧煤', 77.5)]
 
 
+@pytest.mark.parametrize('existing_revision', [None, 'b3f7b0d5f1a2'])
+def test_percent_in_install_and_user_paths_supports_first_start_and_upgrade(tmp_path, resources, existing_revision):
+    install = tmp_path / '安装资源 100%'
+    shutil.copytree(resources, install)
+    data_dir = tmp_path / '用户%资料'
+    data_dir.mkdir()
+    database = data_dir / 'coal_system.db'
+    if existing_revision:
+        env = {**os.environ, 'DATABASE_URL': f'sqlite:///{database}'}
+        env.pop('CBOS_DESKTOP_DATA_DIR', None)
+        prepared = subprocess.run([sys.executable, '-m', 'flask', '--app', 'run.py', 'db',
+                                   'upgrade', existing_revision], cwd=ROOT, env=env,
+                                  capture_output=True, text=True)
+        assert prepared.returncode == 0, prepared.stderr
+        with sqlite3.connect(database) as connection:
+            connection.execute("insert into coal_data (id,name,type,price,calorific_value,ash_content,"
+                               "volatile_matter,fixed_carbon,total_sulfur) "
+                               "values (99,'保留原值','无烟煤',800,7000,10,10,77.5,.5)")
+    app = desktop_app(data_dir, install)
+    try:
+        rows = app.test_client().get('/api/coals?page_size=0', headers=HEADERS).get_json()['data']
+        assert len(rows) == (1 if existing_revision else 8)
+        assert all(row['analysis_basis'] == 'unknown' for row in rows)
+        if existing_revision:
+            assert (rows[0]['name'], rows[0]['fixed_carbon']) == ('保留原值', 77.5)
+        with sqlite3.connect(database) as connection:
+            assert connection.execute('select version_num from alembic_version').fetchone()[0] == 'c8a1d24f5e67'
+    finally:
+        close_app(app)
+    backups = list((data_dir / 'backups').glob('*.db'))
+    assert len(backups) == (1 if existing_revision else 0)
+    if existing_revision:
+        with sqlite3.connect(backups[0]) as backup:
+            assert backup.execute('select version_num from alembic_version').fetchone()[0] == existing_revision
+            assert backup.execute('select name,fixed_carbon from coal_data').fetchall() == [('保留原值', 77.5)]
+
+
 def test_unversioned_existing_database_is_not_blindly_stamped(tmp_path, resources):
     data_dir = tmp_path / 'user-data'
     data_dir.mkdir()

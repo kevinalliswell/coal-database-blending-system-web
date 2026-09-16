@@ -67,9 +67,9 @@ def _online_backup(database: Path) -> Path:
 
 
 def _migrate_and_seed(app, resources: Path, database: Path):
+    from alembic import command
     from alembic.config import Config as AlembicConfig
     from alembic.script import ScriptDirectory
-    from flask_migrate import upgrade
     from app.extensions import db
     from app.services.coal_data_service import seed_from_csv
 
@@ -91,7 +91,10 @@ def _migrate_and_seed(app, resources: Path, database: Path):
                 logger.info('数据库升级前已备份至 %s', backup)
         with app.app_context():
             if fresh or revision != head:
-                upgrade(directory=str(migrations))
+                # Reuse the escaped path; Flask-Migrate's wrapper rebuilds it
+                # without escaping '%' in valid installation directory names.
+                # env.py still reads the registered Flask-Migrate extension.
+                command.upgrade(config, 'head')
             if fresh:
                 summary = seed_from_csv(resources / 'data' / 'test_coal_datas.csv')
                 if summary.skipped_count or not summary.created_count:
