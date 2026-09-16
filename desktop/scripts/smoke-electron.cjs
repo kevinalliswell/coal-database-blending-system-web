@@ -17,7 +17,13 @@ async function launch() {
   const packaged = process.env.CBOS_ELECTRON_EXECUTABLE;
   const env = { ...process.env, CBOS_DESKTOP_DATA_DIR: dataDir };
   delete env.ELECTRON_RUN_AS_NODE;
-  if (packaged && process.platform === 'win32') env.PATH = path.join(env.SystemRoot, 'System32');
+  if (packaged && process.platform === 'win32') {
+    // process.env is case-insensitive on Windows; its plain-object copy is not.
+    const systemRoot = process.env.SYSTEMROOT;
+    assert.ok(systemRoot, 'Windows system directory must be present');
+    for (const key of Object.keys(env)) if (key.toUpperCase() === 'PATH') delete env[key];
+    env.PATH = path.join(systemRoot, 'System32');
+  }
   application = await electron.launch({ executablePath: packaged || require('electron'),
     args: packaged ? [] : [desktop], env, timeout: 120000 });
   page = await application.firstWindow({ timeout: 120000 });

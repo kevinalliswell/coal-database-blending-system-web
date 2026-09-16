@@ -51,7 +51,7 @@ def launch(executable: Path, data_dir: Path, output: Path, run_name: str):
     environment.update({"CBOS_DESKTOP_DATA_DIR": str(data_dir), "CBOS_DESKTOP_TOKEN": token})
     if os.name == "nt":
         # The executable must not accidentally load an installed Python/Node.
-        environment["PATH"] = str(Path(environment["SystemRoot"]) / "System32")
+        environment["PATH"] = str(Path(os.environ["SYSTEMROOT"]) / "System32")
     lines = queue.Queue()
     with (output / f"backend-{run_name}.log").open("wb") as log:
         process = subprocess.Popen(
