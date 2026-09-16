@@ -4,7 +4,6 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import create_app
-from app.config import Config
 from app.extensions import db
 from app.models import OptimizationHistory, ReplacementRatioHistory
 
@@ -38,7 +37,7 @@ CSV_ROWS = [
 
 
 @pytest.fixture
-def app_client(tmp_path, monkeypatch):
+def app_client(tmp_path):
     db_path = tmp_path / 'test_history.db'
     csv_path = tmp_path / 'test_coals.csv'
 
@@ -47,12 +46,11 @@ def app_client(tmp_path, monkeypatch):
         writer.writerow(CSV_HEADERS)
         writer.writerows(CSV_ROWS)
 
-    app = create_app()
-    app.config.update(
-        TESTING=True,
-        SQLALCHEMY_DATABASE_URI=f"sqlite:///{db_path.as_posix()}",
-    )
-    monkeypatch.setattr(Config, 'COAL_DATA_PATH', str(csv_path))
+    app = create_app(config_overrides={
+        'TESTING': True, 'SQLALCHEMY_DATABASE_URI': f"sqlite:///{db_path.as_posix()}",
+        'COAL_DATA_PATH': str(csv_path), 'DATA_DIR': str(tmp_path),
+        'UPLOAD_FOLDER': str(tmp_path / 'uploads'),
+    })
 
     with app.app_context():
         db.drop_all()
