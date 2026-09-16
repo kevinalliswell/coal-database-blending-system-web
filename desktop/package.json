@@ -1,0 +1,75 @@
+{
+  "name": "cbos-desktop",
+  "version": "1.1.1",
+  "private": true,
+  "description": "CBOS offline coal blending desktop application",
+  "author": "CBOS contributors",
+  "license": "UNLICENSED",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "sync-version": "python scripts/build-backend.py --sync-version-only",
+    "build:backend": "python scripts/build-backend.py",
+    "dist:win": "electron-builder --win nsis zip --x64 --publish never"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "devDependencies": {
+    "electron": "44.4.0",
+    "electron-builder": "26.15.3",
+    "playwright": "1.63.0"
+  },
+  "build": {
+    "appId": "com.coalblending.desktop",
+    "productName": "CBOS",
+    "asar": true,
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "*.cjs",
+      "loading.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend-dist/cbos-backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "CBOS-${version}-windows-${arch}.${ext}",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "artifactName": "CBOS-${version}-windows-${arch}-setup.${ext}",
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "packElevateHelper": false,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": true,
+      "runAfterFinish": false
+    }
+  }
+}

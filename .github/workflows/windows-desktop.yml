@@ -1,0 +1,145 @@
+name: Windows desktop
+
+on:
+  pull_request:
+    branches: [main, 'feature/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-x64:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    env:
+      PYTHONUTF8: '1'
+      # Playwright controls the Chromium embedded in Electron; no browser download.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            desktop/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt -r desktop/requirements.txt
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Install desktop dependencies
+        run: npm ci
+        working-directory: desktop
+
+      - name: Python regression tests
+        run: python -m pytest -q
+
+      - name: Frontend regression tests
+        run: node --test tests/*.test.mjs
+        working-directory: frontend
+
+      - name: Desktop shell tests
+        run: npm test
+        working-directory: desktop
+
+      - name: Build offline frontend with the real API
+        run: npm run build -- --mode desktop
+        working-directory: frontend
+        env:
+          VITE_USE_MOCK: 'false'
+
+      - name: Freeze backend and synchronize application version
+        run: python desktop/scripts/build-backend.py
+
+      - name: Frozen backend calculations and restart persistence
+        run: >-
+          python desktop/scripts/smoke-backend.py
+          --executable desktop/backend-dist/cbos-backend/cbos-backend.exe
+          --output desktop/smoke-output/backend
+
+      - name: Build per-user installer and portable ZIP
+        run: npm run dist:win
+        working-directory: desktop
+
+      - name: Install NSIS package in a path with spaces and Chinese characters
+        id: install
+        run: |
+          $installers = @(Get-ChildItem 'desktop/dist/*-setup.exe' -File)
+          if ($installers.Count -ne 1) { throw 'Expected one NSIS installer' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'CBOS 安装测试'
+          # NSIS requires /D last and unquoted, including when the path contains spaces.
+          $installer = Start-Process -FilePath $installers[0].FullName -ArgumentList "/S /D=$installDir" -PassThru -Wait
+          if ($installer.ExitCode -ne 0) { throw "Installer failed: $($installer.ExitCode)" }
+          if (!(Test-Path (Join-Path $installDir 'CBOS.exe'))) { throw 'Installed CBOS.exe is missing' }
+          "CBOS_INSTALL_DIR=$installDir" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Smoke test installed Electron on Windows
+        run: |
+          $env:CBOS_ELECTRON_EXECUTABLE = Join-Path $env:CBOS_INSTALL_DIR 'CBOS.exe'
+          $env:CBOS_SMOKE_OUTPUT = Join-Path $env:GITHUB_WORKSPACE 'desktop/smoke-output/electron'
+          node desktop/scripts/smoke-electron.cjs
+
+      - name: Uninstall NSIS package without deleting user data
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          $uninstallerPath = Join-Path $env:CBOS_INSTALL_DIR 'Uninstall CBOS.exe'
+          if (!(Test-Path $uninstallerPath)) { throw 'Uninstaller is missing' }
+          $uninstaller = Start-Process -FilePath $uninstallerPath -ArgumentList '/S' -PassThru -Wait
+          if ($uninstaller.ExitCode -ne 0) { throw "Uninstaller failed: $($uninstaller.ExitCode)" }
+          $installedExe = Join-Path $env:CBOS_INSTALL_DIR 'CBOS.exe'
+          for ($attempt = 0; $attempt -lt 15 -and (Test-Path $installedExe); $attempt++) { Start-Sleep -Seconds 1 }
+          if (Test-Path $installedExe) { throw 'Uninstall did not remove CBOS.exe' }
+
+      - name: Write SHA-256 checksums
+        run: |
+          $artifacts = @(Get-ChildItem 'desktop/dist' -File | Where-Object { $_.Extension -in '.exe', '.zip' })
+          if ($artifacts.Count -ne 2) { throw 'Expected one NSIS installer and one portable ZIP' }
+          $checksums = foreach ($file in ($artifacts | Sort-Object Name)) {
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($file.Name)"
+          }
+          $checksums | Set-Content 'desktop/dist/SHA256SUMS.txt' -Encoding ascii
+
+      - name: Upload Windows distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: CBOS-windows-x64-${{ github.sha }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.zip
+            desktop/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload smoke reports, visible screenshots and build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CBOS-windows-smoke-${{ github.sha }}
+          path: |
+            desktop/smoke-output/
+            desktop/backend-build/**/warn-*.txt
+            desktop/dist/builder-effective-config.yaml
+          if-no-files-found: warn
