@@ -15,19 +15,7 @@
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      // anti-FOUC: apply saved theme before the app mounts
-      (function () {
-        try {
-          var t = localStorage.getItem('cbos_theme');
-          var theme = t === 'light' ? 'light' : 'dark';
-          document.documentElement.setAttribute('data-theme', theme);
-          document.documentElement.style.colorScheme = theme;
-        } catch (e) {
-          document.documentElement.setAttribute('data-theme', 'dark');
-        }
-      })();
-    </script>
+    <script type="module" src="/src/theme-init.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
