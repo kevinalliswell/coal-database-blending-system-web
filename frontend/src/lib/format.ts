@@ -58,6 +58,11 @@ export function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
 
+/** Keep the backend Excel template distinct from the demo CSV template. */
+export function coalTemplateFilename(blob: Blob): string {
+  return `煤种导入模板.${blob.type.includes('csv') ? 'csv' : 'xlsx'}`;
+}
+
 /** trigger a browser download from a Blob */
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);

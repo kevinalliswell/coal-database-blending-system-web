@@ -10,10 +10,9 @@ from datetime import datetime
 from io import BytesIO
 
 import pandas as pd
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, current_app, jsonify, request, send_file
 from sqlalchemy.exc import IntegrityError
 
-from app.config import Config
 from app.extensions import db
 from app.services import coal_data_service
 from app.utils.excel_utils import create_coal_template
@@ -79,7 +78,7 @@ def upload_coal_data():
     file = request.files["file"]
 
     try:
-        file_path, saved_filename = save_uploaded_file(file, Config.UPLOAD_FOLDER)
+        file_path, saved_filename = save_uploaded_file(file, current_app.config['UPLOAD_FOLDER'])
         df = read_uploaded_file(file_path)
         validate_coal_data_format(df)
 

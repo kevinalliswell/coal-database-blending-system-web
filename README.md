@@ -11,6 +11,10 @@
 - **置换比计算**：高炉喷吹煤的理论置换比与实际生产置换比（含生产因素修正）。
 - **历史追溯**：混煤优化与置换比计算的历史记录与详情。
 
+## Windows 离线桌面版
+
+桌面版内置运行环境，支持本机煤种管理、混配计算、置换比和历史报告，无需连接服务器。提供 Windows x64 安装包与解压版，本地数据独立保存在用户目录。安装、备份和构建说明见 [Windows 桌面版](docs/WINDOWS_DESKTOP.md)。
+
 ## 技术栈
 
 **前端**：Vite 5 · React 18 · TypeScript · TanStack Query · React Router · ECharts；手写 CSS 设计系统（暗色 *Furnace Console* / 亮色 *Foundry Daylight* 双主题，可一键切换）。

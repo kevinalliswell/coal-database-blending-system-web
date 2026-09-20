@@ -7,16 +7,19 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 
-load_dotenv()
+DESKTOP_MODE = bool(os.environ.get('CBOS_DESKTOP_DATA_DIR'))
+if not DESKTOP_MODE:
+    load_dotenv()
 
-BASE_DIR_PATH = Path(__file__).resolve().parent.parent
+BASE_DIR_PATH = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
 BASE_DIR = BASE_DIR_PATH
-DATA_PATH = BASE_DIR_PATH / "data"
+DATA_PATH = Path(os.environ['CBOS_DESKTOP_DATA_DIR']) if DESKTOP_MODE else BASE_DIR_PATH / "data"
 DEFAULT_DB_PATH = DATA_PATH / "coal_system.db"
 
 
@@ -31,15 +34,15 @@ class Config:
     APP_NAME = "coal-database-blending-system-web"
     SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 
-    HOST = os.getenv("HOST", "0.0.0.0")
-    PORT = int(os.getenv("PORT", "5000"))
+    HOST = '127.0.0.1' if DESKTOP_MODE else os.getenv("HOST", "0.0.0.0")
+    PORT = 0 if DESKTOP_MODE else int(os.getenv("PORT", "5000"))
 
     DATA_STORAGE_MODE = os.getenv("DATA_STORAGE_MODE", "sqlite").lower()
 
     BASE_DIR = str(BASE_DIR_PATH)
     DATA_DIR = str(DATA_PATH)
     UPLOAD_FOLDER = str(DATA_PATH / "uploads")
-    COAL_DATA_PATH = str(DATA_PATH / "test_coal_datas.csv")
+    COAL_DATA_PATH = str(BASE_DIR_PATH / "data" / "test_coal_datas.csv")
     DATABASE_PATH = str(DEFAULT_DB_PATH)
     # 构建后的单页应用目录（frontend/dist）。生产由 Flask 直接托管此目录。
     SPA_DIST_DIR = str(BASE_DIR_PATH / "frontend" / "dist")
@@ -47,7 +50,8 @@ class Config:
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024
     ALLOWED_EXTENSIONS = {"csv", "xlsx", "xls"}
 
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", _build_default_database_uri())
+    SQLALCHEMY_DATABASE_URI = (_build_default_database_uri() if DESKTOP_MODE
+                               else os.getenv("DATABASE_URL", _build_default_database_uri()))
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     JSON_SORT_KEYS = False
@@ -56,7 +60,7 @@ class Config:
     @classmethod
     def init_app(cls, app) -> None:
         """初始化应用级目录和日志。"""
-        for path in (cls.DATA_DIR, cls.UPLOAD_FOLDER):
+        for path in (app.config['DATA_DIR'], app.config['UPLOAD_FOLDER']):
             os.makedirs(path, exist_ok=True)
 
         logging.basicConfig(level=cls.LOG_LEVEL)

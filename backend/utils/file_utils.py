@@ -3,8 +3,7 @@
 
 import os
 import pandas as pd
-from werkzeug.utils import secure_filename
-from datetime import datetime
+from uuid import uuid4
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,9 +39,10 @@ def save_uploaded_file(file, upload_folder):
     if not allowed_file(file.filename):
         raise ValueError('不允许的文件类型')
     
-    filename = secure_filename(file.filename)
-    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-    saved_filename = f"{timestamp}_{filename}"
+    # A non-ASCII basename can be erased by secure_filename, including the dot.
+    # Keep only the already-allowlisted extension and generate our own basename.
+    extension = file.filename.rsplit('.', 1)[1].lower()
+    saved_filename = f'{uuid4().hex}.{extension}'
     file_path = os.path.join(upload_folder, saved_filename)
     file.save(file_path)
     

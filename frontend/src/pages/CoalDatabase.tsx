@@ -18,7 +18,7 @@ import { EmptyState, SkeletonRows } from '../components/ui/bits';
 import { Drawer, Modal, ConfirmDialog } from '../components/ui/Overlay';
 import { CoalForm } from '../components/CoalForm';
 import { useToast } from '../components/ui/Toast';
-import { downloadBlob, fixed, num, stamp } from '../lib/format';
+import { coalTemplateFilename, downloadBlob, fixed, num, stamp } from '../lib/format';
 import { useDebounced } from '../hooks/useDebounced';
 
 export default function CoalDatabase() {
@@ -115,7 +115,7 @@ export default function CoalDatabase() {
           <p className="page__lead">维护煤种的工业分析与元素分析指标，作为混煤优化的数据基础。</p>
         </div>
         <div className="page__actions">
-          <button className="btn btn--ghost" onClick={() => downloadTemplate().then((b) => downloadBlob(b, `煤种导入模板.csv`))}>
+          <button className="btn btn--ghost" onClick={() => downloadTemplate().then((b) => downloadBlob(b, coalTemplateFilename(b)))}>
             <Icon name="download" size={15} /> 导入模板
           </button>
           <button className="btn btn--ghost" onClick={() => setImportOpen(true)}>

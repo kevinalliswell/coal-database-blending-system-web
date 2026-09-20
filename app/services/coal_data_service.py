@@ -14,7 +14,6 @@ import pandas as pd
 from flask import current_app
 from sqlalchemy import inspect, or_
 
-from app.config import Config
 from app.extensions import db
 from app.models import Coal
 from app.utils.file_utils import safe_read_csv
@@ -85,12 +84,15 @@ class ImportSummary:
 def ensure_coal_data_initialized() -> None:
     """确保 SQLite 表存在，并在煤种表为空时从默认 CSV 初始化。"""
     app = current_app._get_current_object()
+    # Desktop startup owns migrations and one-time seeding before opening HTTP.
+    if not app.config.get('AUTO_INITIALIZE_COAL_DATA', True):
+        return
     if getattr(app, "_coal_data_initialized", False) and _coal_table_exists():
         return
 
     db.create_all()
     if Coal.query.count() == 0:
-        seed_path = Path(Config.COAL_DATA_PATH)
+        seed_path = Path(app.config['COAL_DATA_PATH'])
         if seed_path.exists():
             seed_from_csv(seed_path)
 

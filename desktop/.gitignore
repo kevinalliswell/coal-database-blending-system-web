@@ -1,0 +1,5 @@
+backend-dist/
+backend-build/
+dist/
+smoke-output/
+*.spec.bak
