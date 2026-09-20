@@ -55,7 +55,14 @@ Get-FileHash .\CBOS-2.0.0-windows-x64-setup.exe -Algorithm SHA256
 
 ## Docker 安装
 
-在线使用 `ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.0`。私有镜像先按 [Web 部署的认证步骤](DEPLOYMENT.md#私有镜像认证) 登录 GHCR；也可加载已授权下载的离线镜像，无需在线镜像凭据：
+在线使用 `ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.0`。私有镜像需要有包读取权限的 GitHub 账号，以及至少具有 `read:packages` 权限的 classic personal access token；组织启用 SSO 时需授权该 token。将下列用户名替换为实际账号，在 Password 提示中输入 token，不要把 token 写入命令参数或文件：
+
+```sh
+docker login ghcr.io -u YOUR_GITHUB_USERNAME
+docker pull ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.0
+```
+
+公开镜像无需此认证。联网时可查看 [v2.0.0 Web 部署说明](https://github.com/kevinalliswell/coal-database-blending-system-web/blob/v2.0.0/docs/DEPLOYMENT.md#私有镜像认证)。也可加载已授权下载的离线镜像，无需在线镜像凭据：
 
 ```sh
 gunzip -c cbos-web-2.0.0-docker-image.tar.gz | docker load
