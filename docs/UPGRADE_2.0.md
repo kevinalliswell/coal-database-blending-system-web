@@ -41,6 +41,8 @@ Windows 上唯一管理员遗忘密码时，先完全退出 CBOS，再由有权�
 
 ## Windows 安装
 
+私有仓库的 Release 需要先在 GitHub 登录获授权账号才能下载；正式发布不会自动改为公开。
+
 下载同版本 `CBOS-2.0.0-windows-x64-setup.exe` 或免安装 ZIP，并核对 `SHA256SUMS.txt`。支持 Windows x64；首次安装无需另装 Python、Node 或服务器。安装包按当前用户安装，不需要管理员权限。ZIP 完整解压后运行 CBOS.exe，不要只复制单个 exe。
 
 本次未配置 Windows 代码签名证书，资产未签名。系统可能提示未知发布者；先确认来源为本仓库同版本 Release 并核对散列。
@@ -53,7 +55,14 @@ Get-FileHash .\CBOS-2.0.0-windows-x64-setup.exe -Algorithm SHA256
 
 ## Docker 安装
 
-在线使用 `ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.0`，或加载离线镜像：
+在线使用 `ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.0`。私有镜像需要有包读取权限的 GitHub 账号，以及至少具有 `read:packages` 权限的 classic personal access token；组织启用 SSO 时需授权该 token。将下列用户名替换为实际账号，在 Password 提示中输入 token，不要把 token 写入命令参数或文件：
+
+```sh
+docker login ghcr.io -u YOUR_GITHUB_USERNAME
+docker pull ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.0
+```
+
+公开镜像无需此认证。联网时可查看 [v2.0.0 Web 部署说明](https://github.com/kevinalliswell/coal-database-blending-system-web/blob/v2.0.0/docs/DEPLOYMENT.md#私有镜像认证)。也可加载已授权下载的离线镜像，无需在线镜像凭据：
 
 ```sh
 gunzip -c cbos-web-2.0.0-docker-image.tar.gz | docker load
@@ -66,9 +75,9 @@ docker exec -it cbos flask --app wsgi users create-admin --username admin
 
 ## 版本核对与发布资产
 
-“关于”中的版本和构建提交应与 `build-manifest.json` 的完整 SHA 一致。镜像 digest、工作流运行编号及各平台验证摘要随资产提供。检查 SHA256SUMS.txt 后再安装；GitHub 标签源码归档对应同一提交。
+“关于”中的版本和构建提交应与 `build-manifest.json` 的完整 SHA 一致。预期访问范围、镜像 digest、工作流运行编号及各平台验证摘要随资产提供。检查 SHA256SUMS.txt 后再安装；GitHub 标签源码归档对应同一提交。
 
-Release 正文由 CHANGELOG.md 的对应版本章节生成。发布重试固定版本/SHA，不移动已存在标签，不覆盖公开资产。最终 latest 只在正式发布和下载核验成功后更新。
+Release 正文由 CHANGELOG.md 的对应版本章节生成。发布重试固定版本/SHA，不移动已存在标签，不覆盖已发布资产。最终 latest 只在正式发布和下载核验成功后更新。
 
 ## 已知范围
 

@@ -11,6 +11,14 @@ on:
         description: 'Full 40-character commit SHA already merged into main'
         required: true
         type: string
+      delivery_visibility:
+        description: 'Expected repository and GHCR visibility; never changes permissions'
+        required: true
+        type: choice
+        default: private
+        options:
+          - private
+          - public
 
 permissions:
   contents: read
@@ -22,6 +30,9 @@ concurrency:
 jobs:
   preflight:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     outputs:
       sha: ${{ steps.identity.outputs.sha }}
       version: ${{ steps.identity.outputs.version }}
@@ -40,10 +51,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BUILD_SHA: ${{ inputs.build_sha }}
           VERSION: ${{ inputs.version }}
+          DELIVERY_VISIBILITY: ${{ inputs.delivery_visibility }}
           DISPATCH_REF: ${{ github.ref }}
         run: |
           test "$DISPATCH_REF" = refs/heads/main
-          python scripts/release.py preflight --sha "$BUILD_SHA" --version "$VERSION" > preflight.json
+          python scripts/release.py preflight --sha "$BUILD_SHA" --version "$VERSION" --delivery-visibility "$DELIVERY_VISIBILITY" > preflight.json
           python - <<'PY'
           import json, os
           data = json.load(open('preflight.json'))
@@ -130,6 +142,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       BUILD_SHA: ${{ needs.preflight.outputs.sha }}
       VERSION: ${{ needs.preflight.outputs.version }}
+      DELIVERY_VISIBILITY: ${{ inputs.delivery_visibility }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -152,7 +165,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
       - name: Verify, stage, download-check, publish and finally promote latest
-        run: python scripts/release.py publish --sha "$BUILD_SHA" --version "$VERSION" --inputs release-input --output release-output
+        run: python scripts/release.py publish --sha "$BUILD_SHA" --version "$VERSION" --delivery-visibility "$DELIVERY_VISIBILITY" --inputs release-input --output release-output
       - uses: actions/upload-artifact@v4
         if: always()
         with:

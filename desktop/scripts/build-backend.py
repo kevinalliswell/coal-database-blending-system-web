@@ -1,4 +1,4 @@
-"""Build the native backend on its target OS and sync the desktop version."""
+"""Build the native backend; explicitly synchronize manifests during version preparation."""
 from __future__ import annotations
 
 import argparse
@@ -26,17 +26,14 @@ def sync_version() -> str:
     )
     if not isinstance(version, str):
         raise ValueError("app.__version__ must be a string")
-    for filename in ("package.json", "package-lock.json"):
-        path = DESKTOP / filename
-        if not path.exists():
+    for directory in (DESKTOP, ROOT / "frontend"):
+        for filename in ("package.json", "package-lock.json"):
+            path = directory / filename
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["version"] = version
             if filename == "package-lock.json":
-                continue
-            raise FileNotFoundError(path)
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        payload["version"] = version
-        if filename == "package-lock.json":
-            payload["packages"][""]["version"] = version
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                payload["packages"][""]["version"] = version
+            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return version
 
 

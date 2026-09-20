@@ -5,7 +5,7 @@
 - [x] Authentication, permissions, settings and desktop sessions
 - [x] Calculation integration and strict replacement inputs
 - [x] Frontend catalog/calculation/admin/help/about
-- [ ] Documentation/CHANGELOG/version preparation
+- [x] Documentation/CHANGELOG/version preparation (v2.0.0)
 - [ ] Full tests + browser/Electron smoke + independent review
 - [ ] Main integration and exact-SHA release builds
 - [ ] v2.0.0 tag, Release, GHCR, downloaded asset verification

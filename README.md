@@ -14,6 +14,8 @@
 
 正式安装资产、校验和与镜像信息在 [GitHub Releases](https://github.com/kevinalliswell/coal-database-blending-system-web/releases)。Windows 安装包当前未签名。部署前备份旧数据库，按 [2.0 升级说明](docs/UPGRADE_2.0.md) 操作。
 
+私有仓库的 Release 需要登录获授权的 GitHub 账号；私有镜像先按 [GHCR 认证步骤](docs/DEPLOYMENT.md#私有镜像认证) 登录。正式发布保留已确认的访问范围。
+
 Web 示例：
 
 ```sh

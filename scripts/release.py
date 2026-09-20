@@ -1,7 +1,7 @@
 """Explicit same-commit release gates. Never creates commits or moves a tag.
 
 Run preflight before builds; publish only after both platform artifacts arrive.
-A public release is read-only on retry: its files are downloaded and verified
+A published release is read-only on retry: its files are downloaded and verified
 before resuming the final latest promotion. Secrets are read from the environment.
 """
 from __future__ import annotations
@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import tempfile
 from urllib.error import HTTPError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,7 +88,8 @@ def release_notes(version, commit, repository, *, changelog=ROOT / 'CHANGELOG.md
         f'- [升级、备份与账号恢复说明]({base}/UPGRADE_2.0.md)',
         f'- [SHA-256 校验清单]({base}/SHA256SUMS.txt) · [构建清单]({base}/build-manifest.json) · [验收摘要]({base}/validation-summary.md)', '',
         'Windows 安装包与 ZIP 未签名，系统可能显示未知发布者。安装前核对本仓库来源、完整 SHA 和文件散列；升级前备份现有数据。',
-        '', '标签、Linux 镜像与 Windows 资产均对应上述提交；固定版本资产不会在公开后被替换。', ''])
+        '', 'Release 下载权限继承仓库访问权限；发布不等于公开，私有仓库需获授权并登录后下载，私有镜像需认证拉取。',
+        '', '标签、Linux 镜像与 Windows 资产均对应上述提交；固定版本资产不会在发布后被替换。', ''])
 
 
 class GitHub:
@@ -100,8 +102,9 @@ class GitHub:
         if not self.token:
             raise ValueError('GH_TOKEN is required')
 
-    def api(self, path, data=None, method=None, missing=False):
-        request = Request(self.base + path, data=json.dumps(data).encode() if data is not None else None,
+    def api(self, path, data=None, method=None, missing=False, global_api=False):
+        base = 'https://api.github.com' if global_api else self.base
+        request = Request(base + path, data=json.dumps(data).encode() if data is not None else None,
             method=method or ('POST' if data is not None else 'GET'), headers={
                 'Authorization': f'Bearer {self.token}', 'Accept': 'application/vnd.github+json',
                 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json'})
@@ -160,12 +163,48 @@ def require_tag(github, tag, commit, *, create=False):
         raise ValueError('Existing tag targets a different commit; tags are never moved')
 
 
-def preflight(version, commit, repository):
+def verify_delivery_visibility(github, image, expected, *, allow_missing_package=False):
+    """Read-only checks: never turn a repository or package public/private."""
+    if expected not in ('private', 'public'):
+        raise ValueError('Delivery visibility must be private or public')
+    metadata = github.api('')
+    if metadata.get('private') is not (expected == 'private') or metadata.get('visibility') != expected:
+        raise ValueError('Repository visibility differs from the requested delivery visibility')
+    owner = metadata['owner']
+    namespace = {'User': 'users', 'Organization': 'orgs'}.get(owner['type'])
+    image_owner, separator, package_name = image.removeprefix('ghcr.io/').partition('/')
+    if not namespace or not image.startswith('ghcr.io/') or not separator or image_owner.lower() != owner['login'].lower():
+        raise ValueError('Image owner must match the repository owner')
+    package = github.api(f'/{namespace}/{quote(owner["login"], safe="")}/packages/container/{quote(package_name, safe="")}',
+                         global_api=True, missing=True)
+    if package is None:
+        if allow_missing_package and expected == 'private':
+            return  # GitHub creates new packages private by default; check again after staging.
+        raise ValueError('Expected package is missing; an owner must configure a public package before public delivery')
+    if package.get('visibility') != expected:
+        raise ValueError('Package visibility differs from the requested delivery visibility')
+
+
+def verify_image_access(github, image, version, digest, delivery_visibility):
+    verify_delivery_visibility(github, image, delivery_visibility)
+    remote = registry_manifest(image, version, anonymous=delivery_visibility == 'public')
+    if not remote or remote[1] != digest:
+        raise ValueError('Fixed GHCR image must be downloadable with the expected visibility and digest')
+
+
+def verify_manifest_delivery(manifest, image, delivery_visibility):
+    if manifest.get('delivery_visibility') != delivery_visibility or manifest.get('image', {}).get('name') != image:
+        raise ValueError('Saved manifest image or delivery visibility differs from this release request')
+
+
+def preflight(version, commit, repository, delivery_visibility='private'):
     verify_tree(version, commit)
     release_notes(version, commit, repository)
     run('git', 'fetch', '--no-tags', 'origin', 'main', cwd=ROOT)
     run('git', 'merge-base', '--is-ancestor', commit, 'origin/main', cwd=ROOT)
     github = GitHub(repository)
+    image = 'ghcr.io/' + repository.lower()
+    verify_delivery_visibility(github, image, delivery_visibility, allow_missing_package=True)
     require_tag(github, 'v' + version, commit)
     latest = github.api('/releases/latest', missing=True)
     if latest and VERSION.fullmatch(latest['tag_name'].removeprefix('v')):
@@ -174,7 +213,7 @@ def preflight(version, commit, repository):
     release = github.release('v' + version)
     if release and release['target_commitish'] != commit:
         raise ValueError('Existing release target_commitish must equal the exact build SHA')
-    return {'version': version, 'commit': commit, 'image': 'ghcr.io/' + repository.lower()}
+    return {'version': version, 'commit': commit, 'image': image, 'delivery_visibility': delivery_visibility}
 
 
 def validation_report(platform, version, commit, directory):
@@ -318,30 +357,33 @@ def promote_latest(image, version, digest):
         raise ValueError('latest does not resolve to the verified fixed image')
 
 
-def finish_release(github, release, version, commit, image, digest):
-    public_image = registry_manifest(image, version, anonymous=True)
-    if not public_image or public_image[1] != digest:
-        raise ValueError('Fixed GHCR image must be publicly downloadable before publication')
+def finish_release(github, release, version, commit, image, digest, delivery_visibility):
+    verify_image_access(github, image, version, digest, delivery_visibility)
     if release['draft']:
         github.api(f'/releases/{release["id"]}', {'draft': False, 'make_latest': 'true'}, method='PATCH')
     published = github.api(f'/releases/{release["id"]}')
     if published['draft']:
         raise ValueError('Release is still a draft')
     with tempfile.TemporaryDirectory() as temporary:
-        verify_downloads(github, published, temporary, (version, commit))
+        manifest = verify_downloads(github, published, temporary, (version, commit))
+    verify_manifest_delivery(manifest, image, delivery_visibility)
+    verify_image_access(github, image, version, digest, delivery_visibility)
     promote_latest(image, version, digest)
 
 
-def publish(version, commit, repository, inputs, destination):
-    identity = preflight(version, commit, repository)
+def publish(version, commit, repository, inputs, destination, delivery_visibility='private'):
+    identity = preflight(version, commit, repository, delivery_visibility)
     github = GitHub(repository); tag = 'v' + version; image = identity['image']
     release = github.release(tag)
     if release and not release['draft']:
         # Retry after publication only verifies existing immutable content and finishes promotion.
         with tempfile.TemporaryDirectory() as temporary:
             manifest = verify_downloads(github, release, temporary, (version, commit))
+        verify_manifest_delivery(manifest, image, delivery_visibility)
+        verify_image_access(github, image, version, manifest['image']['digest'], delivery_visibility)
         promote_latest(image, version, manifest['image']['digest'])
         return
+    verify_delivery_visibility(github, image, delivery_visibility, allow_missing_package=True)
     existing_image = registry_manifest(image, version)
     if existing_image:
         # A previous attempt may have pushed the fixed image before publication
@@ -351,6 +393,7 @@ def publish(version, commit, repository, inputs, destination):
             raise ValueError('Fixed image exists without its verified draft; refusing to replace it')
         with tempfile.TemporaryDirectory() as temporary:
             manifest = verify_downloads(github, release, temporary, (version, commit))
+            verify_manifest_delivery(manifest, image, delivery_visibility)
             if manifest['image']['name'] != image or manifest['image']['digest'] != existing_image[1]:
                 raise ValueError('Existing fixed image does not match the saved draft manifest')
             run('docker', 'load', '--input', str(Path(temporary) / f'cbos-web-{version}-docker-image.tar.gz'))
@@ -358,7 +401,7 @@ def publish(version, commit, repository, inputs, destination):
             if loaded != existing_image[0].get('config', {}).get('digest'):
                 raise ValueError('Draft offline Docker archive does not match the fixed registry image')
         github.api(f'/releases/{release["id"]}', {'body': release_notes(version, commit, repository)}, method='PATCH')
-        finish_release(github, release, version, commit, image, existing_image[1])
+        finish_release(github, release, version, commit, image, existing_image[1], delivery_visibility)
         return
     reports = prepare_assets(version, commit, repository, inputs, destination)
     destination = Path(destination)
@@ -374,6 +417,7 @@ def publish(version, commit, repository, inputs, destination):
     # A per-run staging tag determines the distribution digest without assigning
     # the immutable version tag until the complete draft is downloaded/verified.
     staging = f'staging-{commit}-{os.environ.get("GITHUB_RUN_ID", "local")}-{os.environ.get("GITHUB_RUN_ATTEMPT", "1")}'
+    verify_delivery_visibility(github, image, delivery_visibility, allow_missing_package=True)
     run('docker', 'tag', f'{image}:{version}', f'{image}:{staging}')
     digest = publish_fixed_image(image, staging)
     manifest = {**identity, 'image': {'name': image, 'tag': version, 'digest': digest},
@@ -410,9 +454,10 @@ def publish(version, commit, repository, inputs, destination):
     staged = github.api(f'/releases/{release["id"]}')
     with tempfile.TemporaryDirectory() as temporary:
         verify_downloads(github, staged, temporary, (version, commit))
+    verify_delivery_visibility(github, image, delivery_visibility)
     if publish_fixed_image(image, version) != digest:
         raise ValueError('Fixed image and verified draft digest differ')
-    finish_release(github, staged, version, commit, image, digest)
+    finish_release(github, staged, version, commit, image, digest, delivery_visibility)
 
 
 def main():
@@ -420,15 +465,16 @@ def main():
     parser.add_argument('command', choices=['verify-tree', 'preflight', 'stamp-validation', 'publish'])
     parser.add_argument('--version', required=True); parser.add_argument('--sha', required=True)
     parser.add_argument('--repo', default=os.environ.get('GITHUB_REPOSITORY'))
+    parser.add_argument('--delivery-visibility', choices=['private', 'public'], default='private')
     parser.add_argument('--platform', choices=['linux', 'windows']); parser.add_argument('--reports', type=Path)
     parser.add_argument('--inputs', type=Path); parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     if args.command == 'verify-tree': verify_tree(args.version, args.sha)
-    elif args.command == 'preflight': print(json.dumps(preflight(args.version, args.sha, args.repo)))
+    elif args.command == 'preflight': print(json.dumps(preflight(args.version, args.sha, args.repo, args.delivery_visibility)))
     elif args.command == 'stamp-validation':
         verify_tree(args.version, args.sha)
         write_json(args.output, validation_report(args.platform, args.version, args.sha, args.reports))
-    else: publish(args.version, args.sha, args.repo, args.inputs, args.output)
+    else: publish(args.version, args.sha, args.repo, args.inputs, args.output, args.delivery_visibility)
 
 
 if __name__ == '__main__':
