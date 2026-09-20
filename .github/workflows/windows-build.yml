@@ -40,6 +40,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
           $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
           $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -51,11 +52,20 @@ jobs:
           $env:CI_TASK_ROOT = Join-Path $env:RUNNER_TEMP ('cbos-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
           "CI_TASK_ROOT=$env:CI_TASK_ROOT" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           New-Item -ItemType Directory -Force $env:CI_TASK_ROOT | Out-Null
-          $zip = Join-Path $env:CI_TASK_ROOT 'mingit.zip'
-          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip' -OutFile $zip
+          $cache = Join-Path (Split-Path -Parent $env:RUNNER_TEMP) '_cbos-package-cache'
+          New-Item -ItemType Directory -Force $cache | Out-Null
+          "CBOS_ARCHIVE_CACHE=$cache" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          $zip = Join-Path $cache 'MinGit-2.55.0.5-64-bit.zip'
+          if (!(Test-Path -LiteralPath $zip)) {
+            $download = Join-Path $env:CI_TASK_ROOT 'mingit-download.zip'
+            Invoke-WebRequest -UseBasicParsing -TimeoutSec 180 -Uri 'https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip' -OutFile $download
+            if ((Get-FileHash $download -Algorithm SHA256).Hash -ne '56d7b226b7693196cfc71fef26568f536c4a021ab6c37ff2db4287bed908e96e') { throw 'MinGit download checksum mismatch' }
+            Move-Item -LiteralPath $download -Destination $zip
+          }
           if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne '56d7b226b7693196cfc71fef26568f536c4a021ab6c37ff2db4287bed908e96e') { throw 'MinGit checksum mismatch' }
           $gitRoot = Join-Path $env:CI_TASK_ROOT 'git'
-          Expand-Archive -LiteralPath $zip -DestinationPath $gitRoot
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [IO.Compression.ZipFile]::ExtractToDirectory($zip, $gitRoot)
           $gitBin = Join-Path $gitRoot 'cmd'
           & (Join-Path $gitBin 'git.exe') --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -67,11 +77,7 @@ jobs:
           ref: ${{ env.EXPECTED_SHA }}
           path: ci/${{ github.run_id }}-${{ github.run_attempt }}
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '22'
-          architecture: x64
-      - name: Prepare isolated Python and build caches
+      - name: Prepare portable Node and Python with isolated build caches
         run: ./scripts/ci/windows-tools.ps1
       - name: Verify exact source and version manifests
         run: |

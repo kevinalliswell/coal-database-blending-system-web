@@ -29,7 +29,9 @@ PR 检查显式 checkout 当前 PR 的完整 head SHA；各平台使用同一份
 
 使用 `[self-hosted, Windows, X64, local-windows, windows-build, coal-web]`。任务核对 Server 2019 build 17763、64 位进程、NetworkService SID `S-1-5-20`、非管理员与 Session 0；信任条件和 Mac 相同。两个仓库共用服务账号，不能视为安全沙箱。
 
-系统已有 Git 2.9 / Python 3.10，任务不覆盖它们：checkout 前下载 [官方 MinGit 2.55.0.5](https://github.com/git-for-windows/git/releases/tag/v2.55.0.windows.5)，以发布元数据中的 SHA-256 验证；随后使用 [CPython 官方 NuGet 3.11.9](https://www.nuget.org/packages/python/3.11.9)（3.11 系列的 Windows 二进制版本）创建临时 venv。NuGet 固定 SHA-256 已与实际下载及官方 catalog SHA-512 交叉核对。它不是后续 3.11 安全更新的替代品；项目升级 Python 时应一起更新依赖与多平台验收。包来源、版本和散列固定在工作流/脚本中，失败即停止。Node 22 x64 由 setup-node 放入本 Runner 的专属工具缓存。
+系统已有 Git 2.9 / Python 3.10，任务不覆盖它们：checkout 前下载 [官方 MinGit 2.55.0.5](https://github.com/git-for-windows/git/releases/tag/v2.55.0.windows.5)，以发布元数据中的 SHA-256 验证；随后使用 [CPython 官方 NuGet 3.11.9](https://www.nuget.org/packages/python/3.11.9)（3.11 系列的 Windows 二进制版本）创建临时 venv。NuGet 固定 SHA-256 已与实际下载及官方 catalog SHA-512 交叉核对。它不是后续 3.11 安全更新的替代品；项目升级 Python 时应一起更新依赖与多平台验收。[Node 22.23.2 x64 官方 ZIP](https://nodejs.org/dist/v22.23.2/) 同样核对官方散列并解压。包来源、版本和散列固定在工作流/脚本中，失败即停止。
+
+三个官方归档缓存在本 Runner 的 `_work/_cbos-package-cache`，每次使用前重新核验 SHA-256。缺失时下载到本次临时目录，校验成功才移入缓存，单次下载超时为 180 秒。服务器无法访问官方源时，可在可信机器从相同官方地址下载、校验后传入该目录；不能更换来源或跳过校验。缓存只保留归档，不安装软件或共享运行环境。
 
 MinGit、CPython、venv、pip/npm/Electron/PyInstaller 缓存、临时数据库和产物位于本次任务的独立目录；仅通过 Actions 的任务 PATH/环境文件提供工具，不写系统 PATH、注册表、全局 Python 或业务目录。仅删除本次任务的 checkout 与临时目录；不清理其他 Runner、业务服务或共享数据。原生命令退出码会使步骤失败。
 
