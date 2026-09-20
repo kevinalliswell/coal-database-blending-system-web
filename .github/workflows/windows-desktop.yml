@@ -41,12 +41,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.build_sha || github.sha }}
+          ref: ${{ inputs.build_sha || github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Resolve exact build identity
         id: identity
         env:
-          EXPECTED_SHA: ${{ inputs.build_sha }}
+          EXPECTED_SHA: ${{ inputs.build_sha || github.event.pull_request.head.sha || github.sha }}
           EXPECTED_VERSION: ${{ inputs.version }}
         run: |
           $sha = (git rev-parse HEAD).Trim()

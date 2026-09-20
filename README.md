@@ -45,6 +45,7 @@ docker exec -it cbos flask --app wsgi users create-admin --username admin
 | [Windows 指南](docs/WINDOWS_DESKTOP.md) | 安装、备份、构建与验证 |
 | [升级与发布说明](docs/UPGRADE_2.0.md) | 不兼容变化、恢复与资产核验 |
 | [发布操作规程](docs/RELEASE.md) | 固定提交验收、发布门禁与中断恢复 |
+| [CI 与自托管运行器](docs/CI.md) | Mac 原生检查、Linux/Windows 验收、失败诊断 |
 | [CHANGELOG](CHANGELOG.md) | 各版本变更 |
 
 ## 开发验证
