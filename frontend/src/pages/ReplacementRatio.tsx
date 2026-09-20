@@ -44,10 +44,12 @@ export default function ReplacementRatio() {
   const [revisionId, setRevisionId] = useState('');
   const [allowEstimate, setAllowEstimate] = useState(false);
   const [corrected, setCorrected] = useState(false);
-  const [result, setResult] = useState<CalculationResult | null>(null);
+  const [completed, setResult] = useState<CalculationResult | null>(null);
   const [error, setError] = useState('');
-  const assays = useQuery({ queryKey: ['assays'], queryFn: listAssays });
-  const settings = useQuery({ queryKey: ['settings'], queryFn: getSettings });
+  const settings = useQuery({ queryKey: ['settings'], queryFn: getSettings, refetchInterval: 30_000 });
+  const assays = useQuery({ queryKey: ['assays', settings.data?.version],
+    queryFn: () => listAssays(settings.data!.version), enabled: settings.data !== undefined });
+  const result = completed?.input_snapshot?.settings.version === settings.data?.version ? completed : null;
   const selected = assays.data?.find(record => record.id === Number(revisionId));
   const eligible = selected?.eligibility.theory;
 
@@ -74,6 +76,7 @@ export default function ReplacementRatio() {
       <button className={`btn ${mode === 'actual' ? 'btn--primary' : 'btn--ghost'}`} aria-pressed={mode === 'actual'} onClick={() => setMode('actual')}><Icon name="scale" size={16} /> 实际置换比</button>
     </div>
     {dataError && <div className="panel panel__body mb-20" role="alert">数据加载失败：{dataError.message} <button className="btn btn--ghost" onClick={() => { void assays.refetch(); void settings.refetch(); }}>重试</button></div>}
+    {completed && !result && <p role="status">本次返回结果使用旧设置版本，已保存在历史中。当前设置已更新，请确认参数后重新计算。</p>}
     {!can('calculate') && <p role="status" className="text-mute">当前账号可查看数据，计算需要计算员或管理员权限。</p>}
     <div className="split"><div className="col gap-18">
       {mode === 'theory' ? <>

@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import { listAssays, getSettings, basisLabel, heatLabel } from '../lib/v2';
 import { useSession, ROLE_LABELS } from '../lib/session';
 export default function Dashboard() {
-  const assays = useQuery({queryKey: ['assays'], queryFn: listAssays});
   const settings = useQuery({queryKey: ['settings'], queryFn: getSettings});
+  const assays = useQuery({queryKey: ['assays', settings.data?.version], queryFn: () => listAssays(settings.data!.version), enabled: settings.data !== undefined});
   const {user} = useSession();
   const latest = [...(assays.data || []).reduce((map, row) => { if ((map.get(row.batch_id)?.revision || 0) < row.revision) map.set(row.batch_id, row); return map; }, new Map<number, NonNullable<typeof assays.data>[number]>()).values()].filter(a => !a.archived);
   const eligible = latest.filter(a => a.eligibility.blending.eligible);

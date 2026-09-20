@@ -19,7 +19,7 @@ from app.services.catalog_service import (METRICS, CatalogConflict, create_assay
 MAX_ROWS = 2000
 MAX_BYTES = 10 * 1024 * 1024
 IDENTITY_FIELDS = ('coal_name', 'type', 'batch_code', 'supplier', 'received_at', 'report_number', 'sampled_at', 'notes')
-INFO_FIELDS = ('coal_id', 'batch_id', 'assay_revision_id', 'revision', 'source', 'archived', 'created_at')
+INFO_FIELDS = ('coal_id', 'batch_id', 'assay_revision_id', 'revision', 'source', 'archived', 'created_at', 'csv_text_encoding')
 METRIC_FIELDS = tuple(f'{metric}.{part}' for metric in METRICS for part in ('value', 'unit', 'basis')) + (
     'calorific_value.heat_type', 'hydrogen_content.hydrogen_includes_moisture')
 FIELDS = IDENTITY_FIELDS + METRIC_FIELDS
@@ -113,7 +113,17 @@ def _table(text=None, file_bytes=None, filename=None):
             continue
         if len(values) > len(headers):
             raise ValueError(f'第{number}行列数超过表头')
-        body.append((number, dict(zip(headers, values + [None] * (len(headers) - len(values))))))
+        cells = dict(zip(headers, values + [None] * (len(headers) - len(values))))
+        encoding = cells.get('csv_text_encoding')
+        if not _blank(encoding):
+            if encoding != 'apostrophe-v1':
+                raise ValueError(f'第{number}行CSV文本编码标记不支持')
+            # Our CSV export prefixes every text cell, including text already
+            # starting with an apostrophe. Remove exactly one only when this
+            # explicit format marker is present; arbitrary uploads stay literal.
+            cells = {key: value[1:] if key != 'csv_text_encoding' and isinstance(value, str) and value.startswith("'") else value
+                     for key, value in cells.items()}
+        body.append((number, cells))
     if not body:
         raise ValueError('没有可导入的数据行')
     return headers, body
@@ -346,5 +356,9 @@ def export_catalog(format='xlsx', *, template=False, include_archived=True):
     output = io.StringIO(newline='')
     writer = csv.writer(output)
     writer.writerow(HEADERS)
-    writer.writerows(records)
+    encoding_column = HEADERS.index('csv_text_encoding')
+    for values in records:
+        encoded = ["'" + value if isinstance(value, str) else value for value in values]
+        encoded[encoding_column] = 'apostrophe-v1'
+        writer.writerow(encoded)
     return output.getvalue().encode('utf-8-sig'), 'text/csv; charset=utf-8', basename + '.csv'

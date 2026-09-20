@@ -56,7 +56,7 @@ def boolean_query(name, default=False):
     return value == 'true'
 
 
-def paginated(query, serializer):
+def paginated(query, serializer, **metadata):
     page = int(request.args.get('page', 1))
     size = int(request.args.get('page_size', 0))
     if page < 1 or size < 0 or size > 2000:
@@ -65,7 +65,7 @@ def paginated(query, serializer):
     if size:
         query = query.offset((page - 1) * size).limit(size)
     return jsonify(status='success', data=[serializer(item) for item in query.all()],
-                   pagination={'page': page, 'page_size': size, 'total': total})
+                   pagination={'page': page, 'page_size': size, 'total': total}, **metadata)
 
 
 @catalog_bp.route('/catalog', methods=['GET', 'POST'])
@@ -139,7 +139,8 @@ def flat_assays():
         query = query.filter(Coal.id == int(request.args['coal_id']))
     if request.args.get('batch_id'):
         query = query.filter(CoalBatch.id == int(request.args['batch_id']))
-    return paginated(query, lambda record: service.serialize_assay(record, current))
+    return paginated(query, lambda record: service.serialize_assay(record, current),
+                     settings_version=current['version'])
 
 
 @catalog_bp.post('/assays/preview')

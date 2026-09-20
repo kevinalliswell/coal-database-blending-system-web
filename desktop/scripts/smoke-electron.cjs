@@ -14,6 +14,8 @@ async function launch(setup) {
   const packaged = process.env.CBOS_ELECTRON_EXECUTABLE;
   const env = { ...process.env, CBOS_DESKTOP_DATA_DIR: dataDir };
   delete env.ELECTRON_RUN_AS_NODE;
+  delete env.CBOS_BUILD_SHA;
+  delete env.CBOS_BUILD_TIME;
   if (packaged && process.platform === 'win32') {
     const systemRoot = process.env.SYSTEMROOT;
     assert.ok(systemRoot, 'Windows system directory must be present');
@@ -64,6 +66,7 @@ async function saveDownload(button, filename) {
 }
 (async () => {
   await launch(true);
+  const build = (await api('/api/system/info')).data;
   const legacy = (await api('/api/assays')).data;
   assert.equal(legacy.length, 8);
   assert.ok(legacy.every(a => !a.eligibility.blending.eligible));
@@ -162,6 +165,7 @@ async function saveDownload(button, filename) {
   assert.deepEqual(errors, []);
   await application.close(); application = null;
   fs.writeFileSync(path.join(output, 'electron-smoke.json'), JSON.stringify({passed: true,
+    version: build.version, build_commit: build.build_commit,
     platform: process.platform, arch: process.arch, packaged: Boolean(process.env.CBOS_ELECTRON_EXECUTABLE),
     six_coal_result: result.result.recommended_solution, ratio: ratio.ratio,
     checks: ['first admin UI', 'restart login', 'private session', 'legacy unknown disabled', '3 anthracite + 3 bituminous UI solve',

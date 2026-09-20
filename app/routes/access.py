@@ -113,6 +113,11 @@ def authorize_api():
         raise AccessError('请先登录', 401, 'login_required')
     if request.method not in SAFE_METHODS:
         _check_csrf()
+    elif not public and request.headers.get('X-CSRF-Token'):
+        # A browser tab may still show user A after another tab changes the
+        # shared cookie to user B. Pin its reads to the session it last loaded.
+        # Header-free API reads remain compatible; /auth/session can refresh.
+        _check_csrf()
     if not public and not (_permissions_for_request() & set(ROLE_PERMISSIONS[g.current_user.role])):
         raise AccessError('当前账号没有此操作权限', 403, 'permission_denied')
 
@@ -142,10 +147,11 @@ def login():
 
 @bp.post('/auth/logout')
 def logout():
-    db.session.delete(_session()); db.session.commit()
-    g.access_session = None
-    g.access_cookie = ('', 0)
-    return jsonify(status='success')
+    # Rotate away from the authenticated token, retaining one anonymous session
+    # for the shared browser cookie. Concurrent tabs then reuse its CSRF token
+    # instead of racing to bootstrap multiple cookies after logout.
+    _new_session()
+    return jsonify(_session_response())
 
 
 @bp.put('/auth/password')

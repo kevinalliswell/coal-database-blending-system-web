@@ -15,8 +15,14 @@ venv
 data/coal_system.db
 data/uploads
 data/history
+data/backups
 *.sqlite
+*.sqlite3
 *.db
+*.db-wal
+*.db-shm
+/release-output
+/build-info.json
 
 # frontend build inputs we don't want in context (rebuilt in-image)
 frontend/node_modules
@@ -28,7 +34,8 @@ frontend/.vite
 .idea
 .vscode
 
-# docs that don't affect the image
+# Local validation outputs are not image inputs.
 tests
-docs
-*.md
+desktop
+outputs
+tasks

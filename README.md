@@ -32,10 +32,13 @@ docker exec -it cbos flask --app wsgi users create-admin --username admin
 | [煤质基准契约](docs/DATA_BASIS_CONTRACT.md) | 身份、单位、准入与快照规则 |
 | [换算规范](docs/ASSAY_CONVERSION.md) | 公式、来源、依赖、固定碳差减及实例 |
 | [API 参考](docs/API_REFERENCE.md) | 认证、批次修订、导入、计算与设置 |
+| [批次与导入接口](docs/CATALOG_IMPORT_API.md) | 预览确认、修订、归档和安全导出 |
+| [置换比输入契约](docs/REPLACEMENT_V2.md) | 干基模型、热量单位、显式估算及来源 |
 | [架构](docs/ARCHITECTURE.md) | Web/桌面、权限和算法边界 |
 | [Web 部署](docs/DEPLOYMENT.md) | 初始化、升级、反向代理与恢复 |
 | [Windows 指南](docs/WINDOWS_DESKTOP.md) | 安装、备份、构建与验证 |
 | [升级与发布说明](docs/UPGRADE_2.0.md) | 不兼容变化、恢复与资产核验 |
+| [发布操作规程](docs/RELEASE.md) | 固定提交验收、发布门禁与中断恢复 |
 | [CHANGELOG](CHANGELOG.md) | 各版本变更 |
 
 ## 开发验证

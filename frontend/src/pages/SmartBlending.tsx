@@ -65,7 +65,7 @@ function BlendingWorkspace({settings}: {settings: Settings}) {
   const [progress, setProgress] = useState(0);
   const resultRef = useRef<HTMLDivElement>(null);
 
-  const coalsQ = useQuery({queryKey: ['assays', settings.version], queryFn: listAssays});
+  const coalsQ = useQuery({queryKey: ['assays', cfg.settingsVersion], queryFn: () => listAssays(cfg.settingsVersion), enabled: !settingsChanged});
   const allCoals = useMemo(() => (settingsChanged ? [] : coalsQ.data || []).map(a => ({
     id: a.id, name: a.label, type: a.coal_type, assay: a,
     price: NaN, calorific_value: NaN, ash_content: NaN, volatile_matter: NaN, fixed_carbon: NaN, total_sulfur: NaN,

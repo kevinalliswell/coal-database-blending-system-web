@@ -7,16 +7,13 @@
 FROM node:20-slim AS frontend
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
-# npm 存在 optional-deps 顽疾（npm/cli#4828），可能漏装平台相关的 rollup 原生二进制。
-# 先 npm ci；若 rollup 原生模块加载失败，则按官方建议清空后重装兜底。
-RUN npm ci --no-audit --no-fund \
-    && ( node -e "require('rollup')" >/dev/null 2>&1 \
-         || ( echo "rollup native binary missing — reinstalling clean" \
-              && rm -rf node_modules package-lock.json \
-              && npm install --no-audit --no-fund ) )
+# Keep the reviewed lockfile authoritative, including platform optional modules.
+RUN npm ci --include=optional --no-audit --no-fund
 COPY frontend/ ./
+COPY docs /docs
+COPY CHANGELOG.md /CHANGELOG.md
 # 生产构建（.env.production 关闭演示数据，直连同源 /api）
-RUN npm run build
+RUN VITE_USE_MOCK=false npm run build
 
 # ---------- stage 2: Python 运行时 ----------
 FROM python:3.11-slim AS runtime
@@ -39,9 +36,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY backend ./backend
 COPY migrations ./migrations
-COPY data ./data
+COPY data/test_coal_datas.csv ./data/test_coal_datas.csv
 COPY static ./static
 COPY run.py wsgi.py pyproject.toml ./
+COPY --chmod=755 scripts/container-entrypoint.sh /usr/local/bin/cbos-entrypoint
+COPY docs ./docs
+COPY CHANGELOG.md ./
+ARG BUILD_COMMIT=unknown
+ARG BUILD_TIME=unknown
+ENV CBOS_BUILD_SHA=$BUILD_COMMIT CBOS_BUILD_TIME=$BUILD_TIME
+LABEL org.opencontainers.image.revision=$BUILD_COMMIT
+ENTRYPOINT ["cbos-entrypoint"]
 
 # 构建产物 → 由 Flask 托管（SPA_DIST_DIR = /app/frontend/dist）
 COPY --from=frontend /build/dist ./frontend/dist

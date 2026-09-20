@@ -9,6 +9,8 @@
 3. 登录会旋转 token，后续写请求使用登录响应中的新 token。
 4. `POST /api/auth/logout` 退出；`PUT /api/auth/password` 提交 `{current_password,password}`，撤销所有会话。
 
+浏览器读请求也发送已加载会话的 X-CSRF-Token，用于发现其他标签页改变共享 cookie 后的身份变化；携带该头的业务 GET 会核对会话，未携带该头的既有只读 API 客户端仍兼容。GET /api/auth/session 可刷新过期的 token。退出会轮转为无权限匿名 cookie，使多个标签页复用同一登录前会话；每次用户点击登录/初始化后，先读取当前 token，再只提交一次凭据。登录失败保留表单与错误供手动重试；业务请求收到 csrf_failed 后刷新会话，不能自动重放写请求。标签页间只传随机变更通知，不在 localStorage 保存 token。
+
 Web 不开放首管理员 HTTP 初始化；使用服务器 CLI。桌面 `POST /api/auth/setup` 还要求主进程认证过的本机传输。
 
 `GET/POST /api/users` 查看/创建，创建字段为 username、display_name、role、password；`PATCH /api/users/{id}` 修改 display_name/role/active；`PUT /api/users/{id}/password` 管理员重置。角色为 admin/data_manager/calculator/viewer。
@@ -36,6 +38,8 @@ catalog、batches、assays 列表默认排除归档，可用 `include_archived=t
 单项 raw 示例：`"ash_content":{"value":12,"unit":"%","basis":"d"}`。
 热值示例：`"calorific_value":{"value":26,"unit":"MJ/kg","basis":"ar","heat_type":"net_v"}`。
 氢附 `hydrogen_includes_moisture:false/true/null`。完整支持字段见煤质基准契约。
+
+`GET /api/assays` 除 data/pagination 外，顶层返回 `settings_version`，对应本次所有化验采用值共同使用的设置快照。客户端应与正在显示的口径版本核对；不一致时重新获取设置并确认，不能将新口径数值放入旧口径页面。
 
 导入预览接受 multipart `file`，或 JSON `text`；另支持 `mapping:{源列:目标路径|null}`、`metric_metadata:{指标:{unit,basis,heat_type?...}}`、`confirmed_headers:[源列]`。目标路径如 `coal_name`、`batch_code`、`ash_content.value`。返回 headers/mapping/rows/issues/can_commit/preview_token/expires_at。提交时用户、有效期和批次版本均再次校验。
 

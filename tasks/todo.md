@@ -1,10 +1,10 @@
 # CBOS 2.0 checklist
-- [ ] Guard release workflow and merge desktop foundation
-- [ ] Conversion and eligibility service
-- [ ] Batch/revision catalog and migrations/import
-- [ ] Authentication, permissions, settings and desktop sessions
-- [ ] Calculation integration and strict replacement inputs
-- [ ] Frontend catalog/calculation/admin/help/about
+- [x] Guard release workflow and merge desktop foundation (PRs #25 and #24)
+- [x] Conversion and eligibility service
+- [x] Batch/revision catalog and migrations/import
+- [x] Authentication, permissions, settings and desktop sessions
+- [x] Calculation integration and strict replacement inputs
+- [x] Frontend catalog/calculation/admin/help/about
 - [ ] Documentation/CHANGELOG/version preparation
 - [ ] Full tests + browser/Electron smoke + independent review
 - [ ] Main integration and exact-SHA release builds

@@ -1,4 +1,5 @@
 import io
+import csv
 from datetime import datetime, timedelta
 
 import pytest
@@ -103,3 +104,30 @@ def test_export_roundtrip_keeps_all_revisions_and_full_raw(catalog_app):
     result = preview_import(file_bytes=content, filename=filename, user_id=7, settings={})
     assert result['can_commit'], result
     assert [row['raw'] for row in result['rows']] == expected
+
+
+@pytest.mark.parametrize('text', ['=1+1', '+SUM(1,2)', '@SUM(1,2)', '-1+2', "'=literal", '普通文字'])
+def test_formula_like_metadata_is_safe_to_open_and_csv_roundtrip_is_lossless(catalog_app, text):
+    from openpyxl import load_workbook
+    from app.services.catalog_service import create_coal, create_batch, create_assay
+    from app.services.catalog_import import export_catalog, preview_import
+    coal = create_coal({'name': text, 'type': '烟煤'})
+    batch = create_batch(coal.id, {'code': text})
+    create_assay(batch.id, {'raw': {}, 'notes': text})
+    db.session.commit()
+    data, _, filename = export_catalog('xlsx')
+    book = load_workbook(io.BytesIO(data), data_only=False)
+    columns = [cell.value for cell in book.active[1]]
+    for field in ('coal_name', 'batch_code', 'notes'):
+        cell = book.active.cell(2, columns.index(field)+1)
+        assert cell.value == text and cell.data_type == 's'
+    data, _, filename = export_catalog('csv')
+    row = next(csv.DictReader(io.StringIO(data.decode('utf-8-sig'))))
+    assert row['csv_text_encoding'] == 'apostrophe-v1'
+    for field in ('coal_name', 'batch_code', 'notes'):
+        assert row[field] == "'" + text
+    restored = preview_import(file_bytes=data, filename=filename, user_id=7, settings={})
+    assert restored['can_commit'], restored
+    assert restored['rows'][0]['coal_name'] == text
+    assert restored['rows'][0]['batch_code'] == text
+    assert restored['rows'][0]['notes'] == text

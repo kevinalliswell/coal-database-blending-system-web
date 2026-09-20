@@ -4,13 +4,30 @@ on:
   pull_request:
     branches: [main, 'feature/**']
   workflow_dispatch:
+    inputs:
+      build_sha:
+        description: 'Optional exact commit for validation'
+        required: false
+        type: string
+      version:
+        description: 'Expected prepared version'
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      build_sha:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-desktop-${{ github.ref }}
-  cancel-in-progress: true
+  group: windows-desktop-${{ github.workflow }}-${{ inputs.build_sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   windows-x64:
@@ -23,6 +40,22 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.build_sha || github.sha }}
+
+      - name: Resolve exact build identity
+        id: identity
+        env:
+          EXPECTED_SHA: ${{ inputs.build_sha }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          $sha = (git rev-parse HEAD).Trim()
+          if ($env:EXPECTED_SHA -and $sha -ne $env:EXPECTED_SHA) { throw 'Checkout does not match requested full SHA' }
+          $version = (Get-Content desktop/package.json | ConvertFrom-Json).version
+          if ($env:EXPECTED_VERSION -and $version -ne $env:EXPECTED_VERSION) { throw 'Prepared version differs' }
+          "sha=$sha" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$version" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "CBOS_BUILD_SHA=$sha" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
       - uses: actions/setup-python@v5
         with:
@@ -41,6 +74,12 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             desktop/package-lock.json
+
+      - name: Check committed version manifests
+        env:
+          BUILD_SHA: ${{ steps.identity.outputs.sha }}
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: python scripts/release.py verify-tree --sha $env:BUILD_SHA --version $env:VERSION
 
       - name: Install Python dependencies
         run: python -m pip install -r requirements-dev.txt -r desktop/requirements.txt
@@ -70,7 +109,7 @@ jobs:
         env:
           VITE_USE_MOCK: 'false'
 
-      - name: Freeze backend and synchronize application version
+      - name: Freeze exact committed backend and embed build provenance
         run: python desktop/scripts/build-backend.py
 
       - name: Frozen backend calculations and restart persistence
@@ -119,6 +158,16 @@ jobs:
             throw 'Uninstall modified user data'
           }
           Remove-Item $dataProbe
+          @{ installed=$true; uninstalled=$true; data_preserved=$true } | ConvertTo-Json | Set-Content desktop/smoke-output/installation.json -Encoding utf8
+
+      - name: Attest successful same-SHA Windows validation
+        env:
+          BUILD_SHA: ${{ steps.identity.outputs.sha }}
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: >-
+          python scripts/release.py stamp-validation --platform windows
+          --sha $env:BUILD_SHA --version $env:VERSION
+          --reports desktop/smoke-output --output desktop/dist/windows-validation.json
 
       - name: Write SHA-256 checksums
         run: |
@@ -133,11 +182,12 @@ jobs:
       - name: Upload Windows distribution
         uses: actions/upload-artifact@v4
         with:
-          name: CBOS-windows-x64-${{ github.sha }}
+          name: CBOS-windows-x64-${{ steps.identity.outputs.sha }}
           path: |
             desktop/dist/*.exe
             desktop/dist/*.zip
             desktop/dist/SHA256SUMS.txt
+            desktop/dist/windows-validation.json
           if-no-files-found: error
           compression-level: 0
 
@@ -145,7 +195,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CBOS-windows-smoke-${{ github.sha }}
+          name: CBOS-windows-smoke-${{ steps.identity.outputs.sha }}
           path: |
             desktop/smoke-output/
             desktop/backend-build/**/warn-*.txt

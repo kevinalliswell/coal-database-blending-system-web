@@ -61,6 +61,8 @@ class Backend:
 def launch(executable: Path, data_dir: Path, output: Path, run_name: str):
     token = secrets.token_hex(32)
     environment = os.environ.copy()
+    environment.pop('CBOS_BUILD_SHA', None)
+    environment.pop('CBOS_BUILD_TIME', None)
     environment.update({"CBOS_DESKTOP_DATA_DIR": str(data_dir), "CBOS_DESKTOP_TOKEN": token})
     if os.name == "nt":
         # The executable must not accidentally load an installed Python/Node.
@@ -128,6 +130,7 @@ def run_smoke(executable: Path, output: Path) -> dict:
                 except HTTPError as error:
                     assert error.code in (401, 403), error.code
             backend.login(setup=True)
+            build = backend.json('/api/system/info')['data']
             health = backend.json('/health')
             assert health['status'] == 'ok' and health['storage_mode'] == 'sqlite'
             html = backend.request('/').decode('utf-8')
@@ -199,7 +202,8 @@ def run_smoke(executable: Path, output: Path) -> dict:
             assert persisted['result_payload']['input_snapshot'] == result['input_snapshot']
             assert persisted['result_payload']['result']['optimal_ratios'] == ratios
             assert backend.json('/api/settings')['data'] == saved_settings
-        return {'status': 'passed', 'executable': str(executable), 'assay_revision_ids': selected_ids,
+        return {'status': 'passed', 'version': build['version'], 'build_commit': build['build_commit'],
+                'executable': str(executable), 'assay_revision_ids': selected_ids,
                 'anthracite_count': 3, 'bituminous_count': 3, 'optimal_ratios': ratios,
                 'total_price': solution['total_price'], 'total_heat': solution['total_heat'],
                 'history_id': history_id, 'restart_persistence': True, 'xlsx_export': True,
