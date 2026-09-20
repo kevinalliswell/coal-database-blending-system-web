@@ -1,2 +1,2 @@
 self-hosted-runner:
-  labels: [local-mac, coal-web]
+  labels: [local-mac, local-windows, windows-build, coal-web]

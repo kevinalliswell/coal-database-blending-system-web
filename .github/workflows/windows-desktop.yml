@@ -39,6 +39,11 @@ jobs:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
+      - name: Require disposable hosted environment for installation and GUI acceptance
+        run: |
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
+            throw 'Installation, upgrade, uninstall and GUI acceptance require an independent disposable test environment.'
+          }
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.build_sha || github.event.pull_request.head.sha || github.sha }}
