@@ -1,3 +1,8 @@
+# Unreleased
+
+## Changed
+- Releases require explicit workflow dispatch. Merging a feature into main no longer publishes a release. The CBOS 2.0 release pipeline will validate one fixed commit before publishing.
+
 # CHANGELOG
 
 
