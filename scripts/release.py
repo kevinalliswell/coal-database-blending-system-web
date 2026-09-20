@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,9 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 SHA = re.compile(r'^[0-9a-f]{40}$')
 VERSION = re.compile(r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')
+WINDOWS_LIFECYCLE_CHECKS = ('fresh_install_gui', 'fresh_uninstall_database', 'old_install_gui',
+    'in_place_upgrade', 'upgrade_login_restart', 'upgrade_data_preserved',
+    'upgraded_uninstall_database', 'zip_extracted_launch', 'zip_login_restart', 'zip_data_preserved')
 
 
 def run(*args, **kwargs):
@@ -216,6 +220,40 @@ def preflight(version, commit, repository, delivery_visibility='private'):
     return {'version': version, 'commit': commit, 'image': image, 'delivery_visibility': delivery_visibility}
 
 
+def validate_windows_lifecycle(version, commit, directory):
+    scripts = ROOT / 'desktop/scripts'
+    baseline = read_json(scripts / 'upgrade-baseline.json')
+    lifecycle = read_json(directory / 'lifecycle.json')
+    if (lifecycle.get('schema_version'), lifecycle.get('status'), lifecycle.get('version'),
+            lifecycle.get('build_commit'), lifecycle.get('baseline')) != (1, 'passed', version, commit, baseline):
+        raise ValueError('Windows lifecycle identity/baseline mismatch')
+    if any(lifecycle.get('checks', {}).get(key) is not True for key in WINDOWS_LIFECYCLE_CHECKS):
+        raise ValueError('All Windows installation, upgrade, ZIP and uninstall checks must pass')
+    for stage in ('baseline', 'upgrade', 'zip'):
+        report = read_json(directory / stage / 'lifecycle-electron.json')
+        expected = (baseline['version'], baseline['commit']) if stage == 'baseline' else (version, commit)
+        if (report.get('version'), report.get('build_commit')) != expected or report.get('stage') != stage:
+            raise ValueError(f'{stage} Electron identity mismatch')
+        if (any(report.get(key) is not True for key in ('passed', 'packaged', 'login', 'restart_login', 'fixture_preserved', 'history_export'))
+                or report.get('platform') != 'win32' or report.get('arch') != 'x64' or report.get('renderer_errors') != []):
+            raise ValueError(f'{stage} actual Electron acceptance is incomplete')
+    # Recompute the comparisons from the supplied snapshots, rather than trusting
+    # a success boolean. Reports contain hashes/structure, never passwords or data.
+    spec = importlib.util.spec_from_file_location('cbos_lifecycle_data', scripts / 'lifecycle-data.py')
+    comparisons = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(comparisons)
+    for filename, kind in [('fresh-uninstall-data', 'uninstall'), ('upgrade-data', 'upgrade'),
+                           ('upgraded-uninstall-data', 'uninstall'), ('zip-data', 'upgrade')]:
+        evidence = read_json(directory / (filename + '.json'))
+        for snapshot in (evidence['before'], evidence['after']):
+            for table in ('app_user', 'coal_data', 'coal_batches', 'assay_revisions', 'optimization_history', 'system_settings'):
+                if snapshot.get('tables', {}).get(table, {}).get('row_count', 0) < 1:
+                    raise ValueError(f'Lifecycle data must contain real {table} records')
+        compare = comparisons.compare_uninstall if kind == 'uninstall' else comparisons.compare_upgrade
+        if compare(evidence['before'], evidence['after']) != evidence.get('comparison'):
+            raise ValueError('Lifecycle comparison evidence mismatch')
+
+
 def validation_report(platform, version, commit, directory):
     validate_identity(version, commit)
     directory = Path(directory)
@@ -229,7 +267,13 @@ def validation_report(platform, version, commit, directory):
             raise ValueError('Both frozen and installed Windows artifacts must report the exact baked-in version/SHA')
         if any(install.get(key) is not True for key in ('installed', 'uninstalled', 'data_preserved')):
             raise ValueError('Actual installation, uninstallation and data preservation must pass')
-        checks = ['python', 'frontend', 'desktop-shell', 'frozen-backend', 'installed-electron', 'uninstall-data-preservation']
+        if (install.get('version'), install.get('build_commit'), install.get('default_data_directory'),
+                electron.get('uses_default_data_directory'), electron.get('packaged'), electron.get('platform'), electron.get('arch')) != (
+                version, commit, True, True, True, 'win32', 'x64'):
+            raise ValueError('Fresh installation must use the actual Windows default database and exact build')
+        validate_windows_lifecycle(version, commit, directory)
+        checks = ['python', 'frontend', 'desktop-shell', 'frozen-backend', 'installed-electron',
+                  'v2.0.0-in-place-upgrade', 'portable-zip-electron', 'uninstall-full-database-preservation']
     else:
         docker = read_json(directory / 'docker-validation.json')
         if docker.get('status') != 'passed' or docker.get('version') != version or docker.get('build_commit') != commit:

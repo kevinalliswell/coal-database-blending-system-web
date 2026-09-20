@@ -7,12 +7,21 @@ const os = require('node:os');
 const desktop = path.resolve(__dirname, '..');
 const output = path.resolve(process.env.CBOS_SMOKE_OUTPUT || path.join(desktop, 'smoke-output'));
 fs.mkdirSync(output, { recursive: true });
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'CBOS-桌面回归-'));
+const defaultData = process.env.CBOS_SMOKE_USE_DEFAULT_DATA === '1';
+if (defaultData) {
+  assert.equal(process.platform, 'win32');
+  assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted');
+  assert.ok(process.env.LOCALAPPDATA);
+  assert.equal(fs.existsSync(path.join(process.env.LOCALAPPDATA, 'CBOS', 'coal_system.db')), false);
+}
+const dataDir = defaultData ? path.join(process.env.LOCALAPPDATA, 'CBOS')
+  : fs.mkdtempSync(path.join(os.tmpdir(), 'CBOS-桌面回归-'));
 const errors = [];
 let application, page;
 async function launch(setup) {
   const packaged = process.env.CBOS_ELECTRON_EXECUTABLE;
   const env = { ...process.env, CBOS_DESKTOP_DATA_DIR: dataDir };
+  if (defaultData) delete env.CBOS_DESKTOP_DATA_DIR;
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.CBOS_BUILD_SHA;
   delete env.CBOS_BUILD_TIME;
@@ -24,6 +33,8 @@ async function launch(setup) {
   }
   application = await electron.launch({ executablePath: packaged || require('electron'),
     args: packaged ? [] : [desktop], env, timeout: 120000 });
+  assert.equal(path.resolve(await application.evaluate(({app}) => app.getPath('userData'))).toLowerCase(),
+    path.resolve(dataDir).toLowerCase());
   page = await application.firstWindow({ timeout: 120000 });
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -202,6 +213,7 @@ async function saveDownload(button, filename) {
   await application.close(); application = null;
   fs.writeFileSync(path.join(output, 'electron-smoke.json'), JSON.stringify({passed: true,
     version: build.version, build_commit: build.build_commit,
+    uses_default_data_directory: defaultData,
     platform: process.platform, arch: process.arch, packaged: Boolean(process.env.CBOS_ELECTRON_EXECUTABLE),
     six_coal_result: result.result.recommended_solution, ratio: ratio.ratio,
     checks: ['first admin UI', 'restart login', 'private session', 'fresh database empty', 'Help semantic headings/tables/lists', 'About without changelog', 'responsive navigation focus/trap/Escape', 'downloaded six-coal XLSX UI import', '3 anthracite + 3 bituminous UI solve',
@@ -218,5 +230,5 @@ async function saveDownload(button, filename) {
   if (application) await application.close().catch(() => {});
   const logs = path.join(dataDir, 'logs', 'desktop.log');
   if (fs.existsSync(logs)) fs.copyFileSync(logs, path.join(output, 'desktop.log'));
-  fs.rmSync(dataDir, {recursive: true, force: true, maxRetries: 10, retryDelay: 300});
+  if (!defaultData) fs.rmSync(dataDir, {recursive: true, force: true, maxRetries: 10, retryDelay: 300});
 });
