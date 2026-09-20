@@ -7,6 +7,7 @@ const output = ts.transpileModule(source, { compilerOptions: { module: ts.Module
 const { createSessionNotifier } = await import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);
 
 test('session changes notify peer tabs once without publishing identity or token', () => {
+  Object.defineProperty(globalThis, 'crypto', { value: {}, configurable: true });
   const peers = new Set(); const sent = [];
   globalThis.BroadcastChannel = class {
     constructor(name) { this.name = name; peers.add(this); }
@@ -17,15 +18,17 @@ test('session changes notify peer tabs once without publishing identity or token
   const a = createSessionNotifier(() => first++); const b = createSessionNotifier(() => second++);
   a.notify();
   assert.equal(first, 0); assert.equal(second, 1);
-  assert.equal(typeof sent[0], 'string'); assert.match(sent[0], /^[0-9a-f-]{36}$/);
-  b.close(); a.notify(); assert.equal(second, 1); a.close(); assert.equal(peers.size, 0);
+  assert.equal(typeof sent[0], 'string'); assert.ok(sent[0].length > 0);
+  b.close(); a.notify(); assert.equal(second, 1); assert.notEqual(sent[0], sent[1]); a.close(); assert.equal(peers.size, 0);
 });
 
 test('storage events provide a secret-free fallback and listeners are cleaned up', () => {
+  Object.defineProperty(globalThis, 'crypto', { value: {}, configurable: true });
   globalThis.BroadcastChannel = undefined; globalThis.window = new EventTarget();
   const writes = []; globalThis.localStorage = { setItem: (...args) => writes.push(args) };
   let refreshes = 0; const notifier = createSessionNotifier(() => refreshes++);
-  notifier.notify(); assert.match(writes[0][1], /^[0-9a-f-]{36}$/);
+  notifier.notify(); assert.equal(typeof writes[0][1], 'string'); assert.ok(writes[0][1].length > 0);
+  notifier.notify(); assert.notEqual(writes[0][1], writes[1][1]);
   const event = new Event('storage'); Object.assign(event, { key: writes[0][0], newValue: writes[0][1] });
   window.dispatchEvent(event); assert.equal(refreshes, 1);
   notifier.close(); window.dispatchEvent(event); assert.equal(refreshes, 1);
