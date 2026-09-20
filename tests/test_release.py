@@ -112,8 +112,14 @@ def test_resume_after_fixed_image_push_reuses_original_draft_assets(monkeypatch,
     assert operations[-1] == ('latest', 'ghcr.io/o/r', '2.0.0', 'sha256:old')
 
 
-def _incomplete_upload_retry(monkeypatch, tmp_path, *, becomes_public=False):
+def _incomplete_upload_retry(monkeypatch, tmp_path, *, becomes_public=False, windows_order=False):
     operations = []
+    # Keep the incomplete asset first under both POSIX and Windows ordering, so
+    # the state transition exercises the second check immediately before DELETE.
+    starter_name = '000-incomplete.zip'
+    if windows_order:
+        # Exercise Windows' case-insensitive Path ordering on every test host.
+        monkeypatch.setattr(release, 'sorted', lambda paths: sorted(paths, key=lambda path: path.name.casefold()), raising=False)
     class FakeGitHub:
         def __init__(self, _repo): self.reads = 0
         def release(self, tag): return {'draft': True, 'id': 1, 'target_commitish': SHA}
@@ -126,10 +132,11 @@ def _incomplete_upload_retry(monkeypatch, tmp_path, *, becomes_public=False):
             self.reads += 1
             return {'draft': not (becomes_public and self.reads >= 2), 'id': 1,
                     'target_commitish': SHA, 'assets': [
-                        {'id': 7, 'name': 'SHA256SUMS.txt', 'state': 'starter', 'size': 0}]}
+                        {'id': 7, 'name': starter_name, 'state': 'starter', 'size': 0}]}
         def download(self, asset, destination):
             raise RuntimeError('starter asset has no downloadable object')
     def prepare(*args):
+        (tmp_path / starter_name).write_bytes(b'completed upload')
         (tmp_path / 'cbos-web-2.0.0-docker-image.tar.gz').write_bytes(b'tested image')
         return {}
     monkeypatch.setattr(release, 'preflight', lambda *args: {'image': 'ghcr.io/o/r'})
@@ -145,16 +152,18 @@ def _incomplete_upload_retry(monkeypatch, tmp_path, *, becomes_public=False):
     return operations
 
 
-def test_draft_retry_replaces_unavailable_starter_asset(monkeypatch, tmp_path):
-    operations = _incomplete_upload_retry(monkeypatch, tmp_path)
+@pytest.mark.parametrize('windows_order', [False, True])
+def test_draft_retry_replaces_unavailable_starter_asset(monkeypatch, tmp_path, windows_order):
+    operations = _incomplete_upload_retry(monkeypatch, tmp_path, windows_order=windows_order)
     release.publish('2.0.0', SHA, 'o/r', tmp_path, tmp_path)
     assert ('delete', '/releases/assets/7') in operations
-    assert ('gh', 'release', 'upload', 'v2.0.0', str(tmp_path / 'SHA256SUMS.txt'), '--repo', 'o/r') in operations
+    assert ('gh', 'release', 'upload', 'v2.0.0', str(tmp_path / '000-incomplete.zip'), '--repo', 'o/r') in operations
     assert operations[-1] == ('finish',)
 
 
-def test_starter_asset_is_not_deleted_if_release_becomes_public(monkeypatch, tmp_path):
-    operations = _incomplete_upload_retry(monkeypatch, tmp_path, becomes_public=True)
+@pytest.mark.parametrize('windows_order', [False, True])
+def test_starter_asset_is_not_deleted_if_release_becomes_public(monkeypatch, tmp_path, windows_order):
+    operations = _incomplete_upload_retry(monkeypatch, tmp_path, becomes_public=True, windows_order=windows_order)
     with pytest.raises(ValueError, match='public release asset'):
         release.publish('2.0.0', SHA, 'o/r', tmp_path, tmp_path)
     assert not any(operation[0] in ('delete', 'gh', 'finish') for operation in operations)

@@ -3,6 +3,8 @@ import importlib.util
 from http.client import RemoteDisconnected
 import io
 from pathlib import Path
+import subprocess
+import sys
 from unittest.mock import Mock
 from urllib.error import HTTPError, URLError
 
@@ -101,3 +103,37 @@ def test_business_calls_do_not_retry_transport_errors(monkeypatch):
     with pytest.raises(ConnectionResetError):
         smoke.API('http://localhost').call('/api/catalog')
     assert opened.call_count == 1
+
+
+def test_restart_refreshes_dynamic_port_before_health_and_business_requests(monkeypatch):
+    commands = []
+    published = ['127.0.0.1:31001', '127.0.0.1:31002']
+    def docker(*args):
+        commands.append(args)
+        return published.pop(0) if args[0] == 'port' else 'container'
+    monkeypatch.setattr(smoke, 'docker', docker)
+    api = smoke.API(smoke.container_url('container'))
+    assert api.url == 'http://127.0.0.1:31001'
+    opener = api.opener
+    probes = []
+    monkeypatch.setattr(smoke, 'wait_ready', lambda url: probes.append((url, api.url)))
+    smoke.restart_container('container', api)
+    assert commands == [('port', 'container', '5000/tcp'), ('restart', 'container'), ('port', 'container', '5000/tcp')]
+    assert probes == [('http://127.0.0.1:31002', 'http://127.0.0.1:31002')]
+    assert api.opener is opener, 'Restart must retain the cookie jar for persistence checks'
+    response = io.BytesIO(b'{"data":[]}')
+    response.status = 200
+    opened = Mock(return_value=response)
+    monkeypatch.setattr(api.opener, 'open', opened)
+    api.call('/api/catalog')
+    assert opened.call_args.args[0].full_url == 'http://127.0.0.1:31002/api/catalog'
+
+
+def test_docker_log_capture_contains_stderr(monkeypatch):
+    original = subprocess.check_output
+    def fake_docker(_args, **kwargs):
+        return original([sys.executable, '-c',
+                         "import sys; print('app output'); print('Gunicorn boot failure', file=sys.stderr)"], **kwargs)
+    monkeypatch.setattr(smoke.subprocess, 'check_output', fake_docker)
+    log = smoke.docker('logs', 'container', stderr=subprocess.STDOUT)
+    assert 'app output' in log and 'Gunicorn boot failure' in log

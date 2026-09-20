@@ -14,8 +14,20 @@ from urllib.request import build_opener, HTTPCookieProcessor, Request
 import uuid
 
 
-def docker(*args, source=None):
-    return subprocess.check_output(['docker', *args], input=source, text=True).strip()
+def docker(*args, source=None, stderr=None):
+    return subprocess.check_output(['docker', *args], input=source, text=True, stderr=stderr).strip()
+
+
+def container_url(name):
+    return 'http://' + docker('port', name, '5000/tcp')
+
+
+def restart_container(name, api):
+    docker('restart', name)
+    # An automatically assigned host port can change when Docker restarts.
+    api.url = container_url(name)
+    wait_ready(api.url)
+    return api.url
 
 
 class API:
@@ -125,8 +137,7 @@ with sqlite3.connect('/app/data/coal_system.db') as c:
     c.execute("insert into coal_data (id,name,type,price,calorific_value,ash_content,volatile_matter,fixed_carbon,total_sulfur) values (1,'旧库原值','无烟煤',998.46,7419,11.5877775,9.6089175,76.3035,.9)")
 ''')
         docker('run', '-d', '--name', name, '-p', '127.0.0.1::5000', '-v', volume + ':/app/data', image)
-        port = docker('port', name, '5000/tcp').split(':')[-1]
-        url = 'http://127.0.0.1:' + port
+        url = container_url(name)
         wait_ready(url)
         # A healthy API alone does not prove the compiled UI/help were packaged.
         assets = json.loads(docker('exec', name, 'python', '-c', '''
@@ -181,7 +192,7 @@ with sqlite3.connect(backup) as db:
     assert db.execute('select version_num from alembic_version').fetchone()[0]=='c8a1d24f5e67'
     assert db.execute('select fixed_carbon from coal_data where id=1').fetchone()[0]==76.3035
 ''')
-            docker('restart', name); wait_ready(url)
+            url = restart_container(name, api)
             assert len(api.call('/api/catalog')['data']) == 1
             verify_system(api.call('/api/system/info')['data'], expected_commit, expected_version)
             assert docker('exec', name, 'python', '-c', "from pathlib import Path;print(len(list(Path('/app/data/backups').glob('*.db'))))") == '1'
@@ -246,7 +257,7 @@ with sqlite3.connect(backup) as db:
                 assert calculated['input_snapshot']['operator']['username'] == 'calculator'
         api.call('/api/auth/logout', {})
         api.call('/api/catalog', expected=401)
-        docker('restart', name); wait_ready(url)
+        url = restart_container(name, api)
         api.login('qaadmin', password)
         verify_system(api.call('/api/system/info')['data'], expected_commit, expected_version)
         persisted = api.call(f'/api/optimization/history/{history["id"]}')['data']['result_payload']['input_snapshot']
@@ -259,7 +270,8 @@ with sqlite3.connect(backup) as db:
                 'logout_and_restart':True, 'immutable_snapshot':True, **assets}
     except Exception:
         try:
-            (output / f'{"upgrade" if legacy else "fresh"}-container.log').write_text(docker('logs', name), encoding='utf-8')
+            (output / f'{"upgrade" if legacy else "fresh"}-container.log').write_text(
+                docker('logs', name, stderr=subprocess.STDOUT), encoding='utf-8')
         except subprocess.CalledProcessError:
             pass
         raise
