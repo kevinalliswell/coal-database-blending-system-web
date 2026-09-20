@@ -33,6 +33,7 @@ $directories = @{
     'PIP_CACHE_DIR' = 'cache/pip'
     'npm_config_cache' = 'cache/npm'
     'ELECTRON_CACHE' = 'cache/electron'
+    'electron_config_cache' = 'cache/electron'
     'ELECTRON_BUILDER_CACHE' = 'cache/electron-builder'
     'PYINSTALLER_CONFIG_DIR' = 'cache/pyinstaller'
     'TEMP' = 'temp'

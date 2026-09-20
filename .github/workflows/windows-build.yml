@@ -89,6 +89,8 @@ jobs:
           "CBOS_BUILD_SHA=$sha" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           "EXPECTED_VERSION=$version" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           python scripts/release.py verify-tree --sha $sha --version $version
+      - name: Prepare optional verified dependency downloads
+        run: python scripts/ci/dependency-cache.py
       - name: Install Python dependencies in the virtual environment
         run: python -m pip install -r requirements-dev.txt -r desktop/requirements.txt
       - name: Install frontend dependencies
@@ -125,7 +127,12 @@ jobs:
         run: python desktop/scripts/smoke-backend.py --executable desktop/backend-dist/cbos-backend/cbos-backend.exe --output outputs/ci/backend
       - name: Build NSIS and ZIP without executing the installer
         id: package
-        run: npm --prefix desktop run dist:win
+        run: |
+          if ($env:CBOS_ELECTRON_ZIP) {
+            npm --prefix desktop run dist:win -- "--config.electronDist=$env:CBOS_ELECTRON_ZIP"
+          } else {
+            npm --prefix desktop run dist:win
+          }
       - name: Record build evidence and verify embedded identity
         if: always()
         env:

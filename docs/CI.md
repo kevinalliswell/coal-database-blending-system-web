@@ -33,6 +33,8 @@ PR 检查显式 checkout 当前 PR 的完整 head SHA；各平台使用同一份
 
 三个官方归档缓存在本 Runner 的 `_work/_cbos-package-cache`，每次使用前重新核验 SHA-256。缺失时下载到本次临时目录，校验成功才移入缓存，单次下载超时为 180 秒。服务器无法访问官方源时，可在可信机器从相同官方地址下载、校验后传入该目录；不能更换来源或跳过校验。缓存只保留归档，不安装软件或共享运行环境。
 
+慢速网络还可使用 `dependency-cache.py` 固定散列的可选 CPython 3.11 Windows wheelhouse 和官方 Electron 44.4.0 x64 ZIP。wheelhouse 的 41 个 wheel 均核对官方 PyPI 文件散列，清单包含三份 requirements 的散列；按统一 LF 换行比较后完全一致才启用离线查找，随后仍由原始 pip install 检查并安装全部依赖。requirements 变化时回到常规解析，缓存缺失时正常下载，缓存散列错误则失败。Electron 归档既校验官方散列，也由 npm 安装脚本验证；打包使用同一份官方 ZIP，流程、功能测试及产物类型不变。`electron_config_cache` 和其他构建缓存均指向本次目录。
+
 MinGit、CPython、venv、pip/npm/Electron/PyInstaller 缓存、临时数据库和产物位于本次任务的独立目录；仅通过 Actions 的任务 PATH/环境文件提供工具，不写系统 PATH、注册表、全局 Python 或业务目录。仅删除本次任务的 checkout 与临时目录；不清理其他 Runner、业务服务或共享数据。原生命令退出码会使步骤失败。
 
 冻结后端通过随机 loopback 端口及临时数据目录测试六煤计算、导入导出、登录和重启；额外核对程序内置版本/SHA 与 checkout 一致。打包只执行 `dist:win --publish never`，不启动生成的安装器。Actions 日志和 Summary 中的 `CI_WINDOWS_BUILD_JSON` 记录服务身份、完整 SHA、步骤状态、pytest 统计、后端报告及 EXE/ZIP SHA-256。构建产物随后清理，不作为发行下载；正式流程仍重新构建并上传验收后的资产。
