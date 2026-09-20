@@ -134,7 +134,8 @@ index=(root/'frontend/dist/index.html').read_text()
 assert '<script' in index and '/assets/' in index
 assert '前端尚未构建' not in index
 scripts=list((root/'frontend/dist/assets').glob('*.js'))
-assert scripts and any('CBOS 2.0 用户手册' in script.read_text() for script in scripts)
+assert scripts and any(all(fragment in script.read_text() for fragment in
+    ('# 操作手册', '化验数据有更正时')) for script in scripts)
 for name in ('USER_GUIDE.md','API_REFERENCE.md','ASSAY_CONVERSION.md'):
     assert (root/'docs'/name).is_file()
 assert (root/'CHANGELOG.md').is_file()

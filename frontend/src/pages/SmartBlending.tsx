@@ -695,17 +695,16 @@ function ResultsView({
         s && (
           <>
             {/* readouts */}
-            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 14 }}>
+            <div className="grid blend-readouts">
               <MiniReadout label="吨煤成本" value={`¥${fixed(s.total_price, 1)}`} tone="ember" />
               <MiniReadout label="综合热值" value={fixed(heatDisplay(s.total_heat, heatUnit), 2)} unit={heatUnit} />
               <MiniReadout label="灰分" value={fixed(s.total_ash, 1)} unit="%" />
               <MiniReadout label="挥发分" value={fixed(s.total_volatile, 1)} unit="%" />
               <MiniReadout label="固定碳" value={fixed(s.total_fixed_carbon, 1)} unit="%" />
               <MiniReadout label="硫分" value={fixed(s.total_sulfur, 2)} unit="%" />
-              <MiniReadout label="质量偏离分" value={fixed(s.quality_penalty, 3)} tone="cyan" />
             </div>
 
-            <div className="text-xs text-mute">质量偏离分按灰分、硫分及挥发分/固定碳窗口计算；分数越低越符合模型偏好，不是燃烧风险概率。</div>
+            <div className="blend-quality"><span className="pill pill--cyan">质量偏离分 {fixed(s.quality_penalty, 3)}</span><p>按灰分、硫分及挥发分/固定碳窗口计算；分数越低越符合模型偏好，不是燃烧风险概率。</p></div>
 
             {/* charts row */}
             <div className="grid grid--3">

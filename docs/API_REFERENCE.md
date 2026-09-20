@@ -70,6 +70,8 @@ catalog、batches、assays 列表默认排除归档，可用 `include_archived=t
 
 `GET /api/optimization/history` 和 `/{id}` 读历史。`POST /api/optimization/export/current` 导出已完成响应；`GET /api/optimization/export/{id}` 导出历史。报告以结果快照为准。
 
+两类计算历史的 `date` 字段：SQLite `CURRENT_TIMESTAMP` 产生的 UTC 时间序列化为带 `Z` 的 ISO 时间；已有明确时区的值保留其偏移。其他数据库未记录时区的旧值保持 `YYYY-MM-DD HH:mm:ss`，表示时间口径未声明，客户端不得猜作 UTC 或本地时间。界面仅对带 `Z` / 偏移的值转换为浏览器本地时间并计算“几分钟前”；无时区值按原始绝对时间显示。此规则只改变响应，不改写历史存储或结果快照。
+
 ## 置换比
 
 ### 理论置换比

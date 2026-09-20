@@ -1,5 +1,7 @@
 # CBOS 2.0 升级与安装说明
 
+本说明的安装示例对应 2.0.1。已在使用 2.0.0 时，更新程序即可保留原账号和数据，日常界面无需执行迁移操作。界面变化和可选测试表见 [2.0.1 更新说明](UI_UPDATE_2.0.1.md)。
+
 ## 不兼容变化
 
 2.0 引入账号权限、批次和化验修订。原煤种 ID 不再是唯一计算输入；优化请求必须提交化验修订 ID、比例边界与设置版本。旧录入写接口返回升级提示；旧历史和读取/导出接口保留。筛选试算已移除。
@@ -43,31 +45,31 @@ Windows 上唯一管理员遗忘密码时，先完全退出 CBOS，再由有权�
 
 私有仓库的 Release 需要先在 GitHub 登录获授权账号才能下载；正式发布不会自动改为公开。
 
-下载同版本 `CBOS-2.0.0-windows-x64-setup.exe` 或免安装 ZIP，并核对 `SHA256SUMS.txt`。支持 Windows x64；首次安装无需另装 Python、Node 或服务器。安装包按当前用户安装，不需要管理员权限。ZIP 完整解压后运行 CBOS.exe，不要只复制单个 exe。
+下载同版本 `CBOS-2.0.1-windows-x64-setup.exe` 或免安装 ZIP，并核对 `SHA256SUMS.txt`。支持 Windows x64；首次安装无需另装 Python、Node 或服务器。安装包按当前用户安装，不需要管理员权限。ZIP 完整解压后运行 CBOS.exe，不要只复制单个 exe。
 
 本次未配置 Windows 代码签名证书，资产未签名。系统可能提示未知发布者；先确认来源为本仓库同版本 Release 并核对散列。
 
 ```powershell
-Get-FileHash .\CBOS-2.0.0-windows-x64-setup.exe -Algorithm SHA256
+Get-FileHash .\CBOS-2.0.1-windows-x64-setup.exe -Algorithm SHA256
 ```
 
 每次启动登录。数据在本机用户数据目录，与安装目录分开。更新程序保留数据；卸载保留数据。备份后可用同版本完整目录恢复；不要合并两份不同部署的 SQLite 文件。
 
 ## Docker 安装
 
-在线使用 `ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.0`。私有镜像需要有包读取权限的 GitHub 账号，以及至少具有 `read:packages` 权限的 classic personal access token；组织启用 SSO 时需授权该 token。将下列用户名替换为实际账号，在 Password 提示中输入 token，不要把 token 写入命令参数或文件：
+在线使用 `ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.1`。私有镜像需要有包读取权限的 GitHub 账号，以及至少具有 `read:packages` 权限的 classic personal access token；组织启用 SSO 时需授权该 token。将下列用户名替换为实际账号，在 Password 提示中输入 token，不要把 token 写入命令参数或文件：
 
 ```sh
 docker login ghcr.io -u YOUR_GITHUB_USERNAME
-docker pull ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.0
+docker pull ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.1
 ```
 
-公开镜像无需此认证。联网时可查看 [v2.0.0 Web 部署说明](https://github.com/kevinalliswell/coal-database-blending-system-web/blob/v2.0.0/docs/DEPLOYMENT.md#私有镜像认证)。也可加载已授权下载的离线镜像，无需在线镜像凭据：
+公开镜像无需此认证。联网时可查看 [v2.0.1 Web 部署说明](https://github.com/kevinalliswell/coal-database-blending-system-web/blob/v2.0.1/docs/DEPLOYMENT.md#私有镜像认证)。也可加载已授权下载的离线镜像，无需在线镜像凭据：
 
 ```sh
-gunzip -c cbos-web-2.0.0-docker-image.tar.gz | docker load
+gunzip -c cbos-web-2.0.1-docker-image.tar.gz | docker load
 docker run -d --name cbos -p 127.0.0.1:5000:5000 -v cbos-data:/app/data \
-  ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.0
+  ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.1
 docker exec -it cbos flask --app wsgi users create-admin --username admin
 ```
 
