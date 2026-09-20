@@ -24,6 +24,13 @@ logger = logging.getLogger(__name__)
 coal_bp = Blueprint("coal_management", __name__)
 
 
+@coal_bp.before_request
+def reject_legacy_writes():
+    if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and request.path != '/api/coals/export':
+        return jsonify(status='error', code='api_upgrade_required',
+                       message='2.0 录入接口已升级，请使用煤种主档、到货批次与化验修订；旧接口不再修改数据'), 410
+
+
 @coal_bp.route("/coals", methods=["GET"])
 def get_coals():
     """获取煤种数据，支持分页、搜索和类型过滤。"""

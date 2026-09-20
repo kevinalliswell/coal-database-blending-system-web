@@ -16,39 +16,12 @@ import type {
 } from './types';
 import * as mock from './mock/engine';
 
-/** Mock mode is on by default in dev; set VITE_USE_MOCK=false to hit real Flask API. */
-export const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false';
+/** Explicit developer fixtures only. Production always uses the authenticated API. */
+export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-class ApiError extends Error {
-  status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
-
-async function j<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || body.status === 'error') {
-    throw new ApiError(res.status, body.message || `请求失败 (${res.status})`);
-  }
-  return body as T;
-}
-
-async function blob(url: string, init?: RequestInit): Promise<Blob> {
-  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...init });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: `导出失败 (${res.status})` }));
-    throw new ApiError(res.status, body.message || '导出失败');
-  }
-  return res.blob();
-}
+import { api as j, download as blob, ApiError } from './http';
 
 /* ---------------- Health ---------------- */
 export async function getHealth(): Promise<HealthInfo> {

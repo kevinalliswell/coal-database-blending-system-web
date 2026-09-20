@@ -38,8 +38,8 @@ class CoalParameters:
     hydrogen_content: float  # 煤粉中氢含量
     ash_content: float  # 煤粉中灰分含量
     sio2_content: float  # 灰分中SiO₂含量
-    decomposition_heat: float = 240.0  # 煤粉分解热，默认无烟煤为240kcal/kg
-    physical_heat: float = 480.0  # 加热至1500°C的物理热，默认为480kcal/kg
+    decomposition_heat: float = 240.0  # 内核热耗统一 kcal_IT/kg 干煤；API不使用此默认值
+    physical_heat: float = 480.0  # 加热至1500°C物理热，kcal_IT/kg 干煤；API须显式提供
 
 
 @dataclass
@@ -264,8 +264,9 @@ class ReplacementRatioCalculator:
             self.logger.error("碳燃烧热计算结果异常，无法计算分解热消耗碳量")
             raise ValueError("碳燃烧热计算结果异常")
         
-        # 单位转换：kcal/kg → kJ/kg (1 kcal = 4.184 kJ)
-        kcal_to_kj = 4.184
+        # 与煤热值统一使用国际蒸汽表卡；API热耗为kJ/kg，进入内核前除以此系数。
+        # 不将热化学卡(4.184)与燃料报告常用的kcal_IT混用。
+        kcal_to_kj = 4.1868
         
         # 计算煤粉分解热（kJ/kg）
         decomposition_heat_kj = self.coal.decomposition_heat * kcal_to_kj
@@ -640,6 +641,5 @@ if __name__ == "__main__":
     print(f"最小置换比: {statistics['最小置换比']:.4f}")
     print(f"置换比标准差: {statistics['置换比标准差']:.4f}")
     print(f"置换比波动范围: {statistics['置换比波动范围']:.4f}")
-
 
 

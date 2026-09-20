@@ -109,3 +109,42 @@ def normalize_optimization_request(data):
 
     return {**data, 'selected_coal_ids': coal_ids, 'optimization_target': target,
             'constraints': constraints, 'ga_params': ga}
+
+
+def normalize_assay_request(data, settings):
+    """V2 binds ratios to immutable assay revisions and an explicit settings version."""
+    _object(data, '请求体')
+    if 'components' not in data:
+        raise ValueError('接口已升级：请提交 components 中的 assay_revision_id 与比例边界；煤种 ID 无法唯一确定批次')
+    if any(key in data for key in ('calculation_mode', 'ratio_basis', 'selected_coal_ids')):
+        raise ValueError('2.0 不再接受试算模式、页面质量基准或旧煤种 ID，请使用系统设置和化验修订')
+    version = _number(data.get('settings_version'), 'settings_version', minimum=1, integer=True)
+    if version != settings['version']:
+        raise ValueError('系统设置已改变，请刷新并重新确认约束后计算')
+    components = data['components']
+    if not isinstance(components, list) or not 2 <= len(components) <= 100:
+        raise ValueError('请选择 2 至 100 份不同批次的化验修订')
+    ids, ratios = [], {}
+    for item in components:
+        _object(item, '配料项')
+        revision_id = _coal_id(item.get('assay_revision_id'))
+        ids.append(revision_id)
+        if 'min_ratio' not in item or 'max_ratio' not in item:
+            raise ValueError('配料项必须明确提供 min_ratio/max_ratio（百分比）')
+        ratios[str(revision_id)] = {'min': item['min_ratio'], 'max': item['max_ratio']}
+    constraints = {**settings['constraints'], **_object(data.get('constraints', {}), '约束条件')}
+    # Components are the sole source of ratio bounds; duplicate sources can disagree.
+    supplied = constraints.pop('ratio_constraints', {})
+    if supplied and supplied != ratios:
+        raise ValueError('比例边界请仅通过 components 提交')
+    constraints['ratio_constraints'] = ratios
+    normalized = normalize_optimization_request({
+        'selected_coal_ids': ids, 'constraints': constraints,
+        'ga_params': {**settings['ga_params'], **_object(data.get('ga_params', {}), '算法参数')},
+        'optimization_target': data.get('optimization_target', '多目标Pareto最优'),
+    })
+    normalized.pop('selected_coal_ids')
+    normalized['components'] = [dict(assay_revision_id=i, min_ratio=normalized['constraints']['ratio_constraints'][str(i)]['min'],
+                                     max_ratio=normalized['constraints']['ratio_constraints'][str(i)]['max']) for i in ids]
+    normalized['settings_version'] = version
+    return normalized

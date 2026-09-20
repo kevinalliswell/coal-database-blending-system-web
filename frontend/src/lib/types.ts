@@ -100,7 +100,9 @@ export interface OptimizationRequest {
   calculation_mode?: 'verified' | 'screening';
   ratio_basis?: 'unknown' | 'ad' | 'ar' | 'd';
   optimization_target: string;
-  selected_coal_ids: number[];
+  selected_coal_ids?: number[]; // historical snapshots only
+  settings_version?: number;
+  components?: {assay_revision_id: number; min_ratio: number; max_ratio: number}[];
   constraints: Partial<BlendingConstraints>;
   ga_params: GaParams;
 }

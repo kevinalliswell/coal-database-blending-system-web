@@ -1,0 +1,11 @@
+# CBOS 2.0 checklist
+- [x] Guard release workflow and merge desktop foundation (PRs #25 and #24)
+- [x] Conversion and eligibility service
+- [x] Batch/revision catalog and migrations/import
+- [x] Authentication, permissions, settings and desktop sessions
+- [x] Calculation integration and strict replacement inputs
+- [x] Frontend catalog/calculation/admin/help/about
+- [ ] Documentation/CHANGELOG/version preparation
+- [ ] Full tests + browser/Electron smoke + independent review
+- [ ] Main integration and exact-SHA release builds
+- [ ] v2.0.0 tag, Release, GHCR, downloaded asset verification

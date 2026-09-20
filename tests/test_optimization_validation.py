@@ -5,31 +5,24 @@ from app.config import Config
 from app.extensions import db
 
 
+from test_v2_optimization import v2_client, add_assay, request_for
+
+
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setattr(Config, 'SQLALCHEMY_DATABASE_URI', f'sqlite:///{tmp_path / "validation.db"}')
-    app = create_app('production')
-    app.config['TESTING'] = True
-    with app.app_context():
-        db.create_all()
-    with app.test_client() as client:
-        client.get('/api/coals')
-        yield client
-    with app.app_context():
-        db.session.remove()
-        db.drop_all()
+def client(v2_client):
+    add_assay(v2_client, '验证煤1', 0)
+    add_assay(v2_client, '验证煤2', 3)
+    return v2_client
 
 
 def payload():
-    return {'calculation_mode': 'screening', 'ratio_basis': 'unknown',
-            'selected_coal_ids': [1, 6], 'constraints': {},
-            'ga_params': {'population_size': 8, 'max_generations': 2}}
+    return request_for([{'id': 1}, {'id': 2}])
 
 
 @pytest.mark.parametrize('ids', [[1, 1, 6], [1, '1'], [1.9, 6], [True, 6], [None, 6], '1,6', [0, 6], [-1, 6]])
 def test_invalid_coal_identity_is_rejected_before_optimization(client, ids):
     request = payload()
-    request['selected_coal_ids'] = ids
+    request['components'] = [{'assay_revision_id': value, 'min_ratio': 0, 'max_ratio': 100} for value in ids] if isinstance(ids, list) else ids
     response = client.post('/api/optimization', json=request)
     assert response.status_code == 400
     assert response.get_json()['status'] == 'error'
@@ -37,7 +30,7 @@ def test_invalid_coal_identity_is_rejected_before_optimization(client, ids):
 
 @pytest.mark.parametrize('field,value', [
     ('constraints', None), ('constraints', []), ('ga_params', [1]),
-    ('optimization_target', []), ('selected_coal_ids', {}),
+    ('optimization_target', []), ('components', {}),
 ])
 def test_bad_request_shapes_return_client_error(client, field, value):
     request = payload()
@@ -48,7 +41,7 @@ def test_bad_request_shapes_return_client_error(client, field, value):
 @pytest.mark.parametrize('bad', [None, [], 'nan', 'Infinity'])
 def test_invalid_ratio_bounds_are_rejected(client, bad):
     request = payload()
-    request['constraints']['ratio_constraints'] = {'1': {'min': bad, 'max': 80}}
+    request['components'][0]['min_ratio'] = bad
     assert client.post('/api/optimization', json=request).status_code == 400
 
 
@@ -68,7 +61,7 @@ def test_non_object_and_malformed_json_return_client_error(client):
 
 def test_fixed_ratio_is_supported(client):
     request = payload()
-    request['constraints']['ratio_constraints'] = {'1': {'min': 50, 'max': 50}, '6': {'min': 50, 'max': 50}}
+    request['components'] = [{'assay_revision_id': i, 'min_ratio': 50, 'max_ratio': 50} for i in (1, 2)]
     response = client.post('/api/optimization', json=request)
     assert response.status_code == 200
     result = response.get_json()['result']
@@ -76,9 +69,9 @@ def test_fixed_ratio_is_supported(client):
     assert result['optimal_ratios'] == pytest.approx([.5, .5])
 
 
-def test_partial_ratio_bounds_use_defaults_for_other_selected_coals(client):
+def test_independent_ratio_bounds_are_applied_to_selected_batches(client):
     request = payload()
-    request['constraints']['ratio_constraints'] = {'1': {'min': 10, 'max': 40}}
+    request['components'][0].update(min_ratio=10, max_ratio=40)
     response = client.post('/api/optimization', json=request)
     assert response.status_code == 200
     result = response.get_json()['result']
@@ -95,8 +88,7 @@ def test_unselected_ratio_keys_are_rejected(client):
 
 def test_numeric_strings_are_normalized_consistently(client):
     request = payload()
-    request['selected_coal_ids'] = ['01', '6']
-    request['constraints']['ratio_constraints'] = {'1': {'min': '50', 'max': '50'}, '06': {'min': '50', 'max': '50'}}
+    request['components'] = [{'assay_revision_id': i, 'min_ratio': '50', 'max_ratio': '50'} for i in ('01', '02')]
     response = client.post('/api/optimization', json=request)
     assert response.status_code == 200
     assert response.get_json()['result']['optimal_ratios'] == pytest.approx([.5, .5])
@@ -109,7 +101,7 @@ def test_single_sided_nonfinite_quality_bound_is_rejected(client):
 
 
 def test_deprecated_heat_target_does_not_restrict_valid_heat_window():
-    from backend.utils.optimization_validation import normalize_optimization_request
+    from backend.utils.optimization_validation import normalize_assay_request
     request = payload()
     request['constraints'] = {'heat_target': 6800, 'heat_min': 7000, 'heat_max': 7500}
-    assert normalize_optimization_request(request)['constraints']['heat_min'] == 7000
+    assert normalize_assay_request(request, {'version': 1, 'constraints': {}, 'ga_params': {}})['constraints']['heat_min'] == 7000

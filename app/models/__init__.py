@@ -4,6 +4,8 @@
 """统一导出 ORM 模型。"""
 
 from app.models.coal import Coal
+from app.models.catalog import CoalBatch, AssayRevision, ImportPreview
+from app.models.access import User, AuthSession, AccessState, SystemSettings, LoginAttempt
 from app.models.optimization import OptimizationHistory
 from app.models.replacement_ratio_history import ReplacementRatioHistory
 from app.models.upload_file import UploadFile

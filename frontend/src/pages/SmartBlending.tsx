@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { exportCurrentReport, listCoals, runOptimization } from '../lib/api';
+import { exportCurrentReport, runOptimization } from '../lib/api';
 import { buildExportPayload, captureRequest, dataValidationLabel, matchesRequest, resolveDataValidation } from '../lib/blendingResult';
 import type {
   BlendingConstraints,
@@ -13,7 +13,6 @@ import type {
 import {
   CONSTRAINT_ROWS,
   DEFAULT_CONSTRAINTS,
-  DEFAULT_GA,
   GA_PRESETS,
   OPTIMIZATION_TARGET,
   type GaPreset,
@@ -26,56 +25,55 @@ import { RatioDonut, MarginRadar, ParetoScatter } from '../components/blending/c
 import { useChartPalette } from '../components/ui/Chart';
 import { useToast } from '../components/ui/Toast';
 import { downloadBlob, fixed, num, stamp } from '../lib/format';
+import { useSession } from '../lib/session';
+import { listAssays, getSettings, basisLabel, heatLabel, heatDisplay, heatCanonical, type Assay, type Settings } from '../lib/v2';
 import { useDebounced } from '../hooks/useDebounced';
 
-const LS_KEY = 'cbos_blending_v1';
-
+type BlendCoal = Coal & { assay: Assay };
 interface Config {
-  calculationMode: 'verified' | 'screening';
-  ratioBasis: 'unknown' | 'ad' | 'ar' | 'd';
+  settingsVersion: number;
   selectedIds: number[];
   constraints: BlendingConstraints;
   gaParams: GaParams;
   presetId: GaPreset['id'] | 'custom';
 }
-
-function loadConfig(): Config {
+function loadConfig(key: string, settings: Settings): Config {
+  const defaults: Config = {settingsVersion: settings.version, selectedIds: [], constraints: {...settings.constraints, ratio_constraints: {}}, gaParams: settings.ga_params, presetId: 'custom'};
   try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) {
-      const p = JSON.parse(raw) as Config;
-      return {
-        calculationMode: p.calculationMode ?? 'verified',
-        ratioBasis: p.ratioBasis ?? 'unknown',
-        selectedIds: p.selectedIds ?? [],
-        constraints: { ...DEFAULT_CONSTRAINTS, ...p.constraints, ratio_constraints: p.constraints?.ratio_constraints ?? {} },
-        gaParams: { ...DEFAULT_GA, ...p.gaParams },
-        presetId: p.presetId ?? 'balanced',
-      };
-    }
-  } catch {
-    /* ignore */
-  }
-  return { calculationMode: 'verified', ratioBasis: 'unknown', selectedIds: [], constraints: { ...DEFAULT_CONSTRAINTS, ratio_constraints: {} }, gaParams: DEFAULT_GA, presetId: 'balanced' };
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (saved && saved.settingsVersion === settings.version) return {...defaults, ...saved};
+  } catch { /* A damaged draft does not block a new calculation. */ }
+  return defaults;
 }
-
 export default function SmartBlending() {
+  const settingsQ = useQuery({queryKey: ['settings'], queryFn: getSettings, refetchInterval: 30_000});
+  if (settingsQ.isPending) return <div className="page" role="status">正在读取系统计算口径…</div>;
+  if (settingsQ.isError) return <div className="page" role="alert">{settingsQ.error.message}</div>;
+  return <BlendingWorkspace settings={settingsQ.data} />;
+}
+function BlendingWorkspace({settings}: {settings: Settings}) {
   const toast = useToast();
-  const [cfg, setCfg] = useState<Config>(loadConfig);
+  const {user, can} = useSession();
+  const storageKey = `cbos_blending_v2_user_${user.id}`;
+  const [cfg, setCfg] = useState<Config>(() => loadConfig(storageKey, settings));
+  const [initialSettings] = useState(settings);
+  const settingsChanged = cfg.settingsVersion !== settings.version;
+  const heatUnit = initialSettings.heat_unit;
   const [gaOpen, setGaOpen] = useState(false);
   const [completed, setCompleted] = useState<{ response: OptimizationResponse; request: OptimizationRequest } | null>(null);
   const [activeId, setActiveId] = useState<string>('');
   const [progress, setProgress] = useState(0);
   const resultRef = useRef<HTMLDivElement>(null);
 
-  const coalsQ = useQuery({ queryKey: ['coals', 'all'], queryFn: () => listCoals({ page_size: 0 }) });
-  const allCoals = coalsQ.data?.data ?? [];
-  const coalById = useMemo(() => new Map(allCoals.map((c) => [c.id, c])), [allCoals]);
-  const selectedCoals = cfg.selectedIds.map((id) => coalById.get(id)).filter((c): c is Coal => !!c);
-
-  useEffect(() => {
-    localStorage.setItem(LS_KEY, JSON.stringify(cfg));
-  }, [cfg]);
+  const coalsQ = useQuery({queryKey: ['assays', cfg.settingsVersion], queryFn: () => listAssays(cfg.settingsVersion), enabled: !settingsChanged});
+  const allCoals = useMemo(() => (settingsChanged ? [] : coalsQ.data || []).map(a => ({
+    id: a.id, name: a.label, type: a.coal_type, assay: a,
+    price: NaN, calorific_value: NaN, ash_content: NaN, volatile_matter: NaN, fixed_carbon: NaN, total_sulfur: NaN,
+    ...a.eligibility.blending.values,
+  } as BlendCoal)), [coalsQ.data, settingsChanged]);
+  const coalById = useMemo(() => new Map(allCoals.map(c => [c.id, c])), [allCoals]);
+  const selectedCoals = cfg.selectedIds.map(id => coalById.get(id)).filter((c): c is BlendCoal => !!c);
+  useEffect(() => { try { localStorage.setItem(storageKey, JSON.stringify(cfg)); } catch { /* Storage may be disabled. */ } }, [cfg, storageKey]);
 
   const patchConstraint = (k: keyof BlendingConstraints, v: number) =>
     setCfg((c) => ({ ...c, constraints: { ...c.constraints, [k]: v } }));
@@ -100,7 +98,12 @@ export default function SmartBlending() {
   const sumMin = selectedCoals.reduce((a, c) => a + getBound(c.id).min, 0);
   const sumMax = selectedCoals.reduce((a, c) => a + getBound(c.id).max, 0);
   const issues: string[] = [];
-  if (cfg.calculationMode === 'verified' && cfg.ratioBasis === 'unknown') issues.push('正式计算前请选择配比质量基准；未确认数据请显式选择筛选试算');
+  if (!can('calculate')) issues.push('当前账号没有执行计算权限');
+  if (settingsChanged) issues.push('系统设置已改变，请刷新页面并重新确认约束');
+  if (coalsQ.isError) issues.push(coalsQ.error.message);
+  if (selectedCoals.length !== cfg.selectedIds.length) issues.push('部分化验记录已不可用，请重新选择');
+  if (new Set(selectedCoals.map(c => c.assay.batch_id)).size !== selectedCoals.length) issues.push('同一批次只能选择一份修订');
+  selectedCoals.forEach(c => { if (!c.assay.eligibility.blending.eligible) issues.push(`${c.name}：${c.assay.eligibility.blending.issues.map(i => i.message).join('；')}`); });
   if (cfg.selectedIds.length < 2) issues.push('至少选择 2 种煤');
   for (const r of CONSTRAINT_ROWS) {
     const lo = cfg.constraints[r.min] as number;
@@ -122,13 +125,12 @@ export default function SmartBlending() {
   const submittedConstraints = { ...cfg.constraints };
   delete submittedConstraints.heat_target;
   const currentRequest: OptimizationRequest = {
-    calculation_mode: cfg.calculationMode,
-    ratio_basis: cfg.ratioBasis,
+    settings_version: cfg.settingsVersion,
+    components: cfg.selectedIds.map(id => ({assay_revision_id: id, min_ratio: getBound(id).min, max_ratio: getBound(id).max})),
     optimization_target: OPTIMIZATION_TARGET,
-    selected_coal_ids: cfg.selectedIds,
     constraints: {
       ...submittedConstraints,
-      ratio_constraints: Object.fromEntries(cfg.selectedIds.map((id) => [String(id), getBound(id)])),
+      ratio_constraints: {},
     },
     ga_params: cfg.gaParams,
   };
@@ -188,7 +190,10 @@ export default function SmartBlending() {
       `方案: ${activeSolution.solution_id}`,
       ...activeSolution.coal_names.map((n, i) => `  ${n}: ${fixed(activeSolution.optimal_ratios[i] * 100, 1)}%`),
       `吨煤成本: ¥${fixed(activeSolution.total_price, 1)}`,
-      `综合热值: ${num(activeSolution.total_heat)} kcal/kg`,
+      `配比质量口径: ${basisLabel(initialSettings.ratio_basis)}`,
+      `热值类型: ${heatLabel(initialSettings.heat_type)}`,
+      `价格口径: 元/${initialSettings.ratio_basis === 'ar' ? '收到' : '干'}吨`,
+      `综合热值: ${fixed(heatDisplay(activeSolution.total_heat, heatUnit), 2)} ${heatUnit}`,
       `灰分/硫分: ${fixed(activeSolution.total_ash, 1)}% / ${fixed(activeSolution.total_sulfur, 2)}%`,
       `数值约束: ${feasible ? '满足' : '存在约束冲突'}`,
       `数据状态: ${dataValidationLabel(res.data_validation)}`,
@@ -222,33 +227,11 @@ export default function SmartBlending() {
         </div>
       </div>
 
-      <section className="panel mb-20">
-        <div className="panel__body col gap-12">
-          <div className="row gap-16 wrap">
-            <label className="col gap-6 grow">
-              <span className="text-sm fw-500">计算模式</span>
-              <select className="select" value={cfg.calculationMode} onChange={(e) => setCfg((c) => ({ ...c, calculationMode: e.target.value as Config['calculationMode'] }))}>
-                <option value="verified">基准一致计算</option>
-                <option value="screening">未确认数据试算（仅用于筛选）</option>
-              </select>
-            </label>
-            <label className="col gap-6 grow">
-              <span className="text-sm fw-500">配比质量基准</span>
-              <select className="select" value={cfg.ratioBasis} onChange={(e) => setCfg((c) => ({ ...c, ratioBasis: e.target.value as Config['ratioBasis'] }))}>
-                <option value="unknown">未确认 / 请选择</option>
-                <option value="ad">空气干燥基（ad）</option>
-                <option value="ar">收到基（ar）</option>
-                <option value="d">干基（d）</option>
-              </select>
-            </label>
-          </div>
-          <div className={`text-sm ${cfg.calculationMode === 'screening' ? 'text-amber' : 'text-mute'}`}>
-            {cfg.calculationMode === 'screening'
-              ? '试算可使用未确认基准的数据，仅用于煤种筛选，不可直接用于生产。已知的基准冲突仍需先修正。'
-              : '将检查煤质、热值、价格与配比的基准一致性及工业分析闭合。本版本不自动换算基准；通过检查不代表现场工艺验证。'}
-          </div>
-        </div>
-      </section>
+      <section className="panel mb-20"><div className="panel__body">
+        <strong>本次口径：{basisLabel(initialSettings.ratio_basis)}配比 · {heatLabel(initialSettings.heat_type)} · 元/{initialSettings.ratio_basis === 'ar' ? '收到' : '干'}吨</strong>
+        <p className="text-sm text-mute">化验原值自动换算到同一口径。每个批次选一份修订，缺少相关数据的记录不能加入计算。</p>
+        {settingsChanged && <p role="alert" className="text-amber">系统设置已更新。<button className="btn" onClick={() => window.location.reload()}>刷新并确认新约束</button>正在运行的计算仍保留原口径。</p>}
+      </div></section>
 
       <div className="split">
         {/* ---------------- left workspace ---------------- */}
@@ -258,10 +241,10 @@ export default function SmartBlending() {
             <div className="panel__body">
               <div className="step">
                 <span className="step__no">1</span>
-                <span className="step__title">选择煤种</span>
+                <span className="step__title">选择批次与化验修订</span>
                 <StatusPill tone={selectedCoals.length >= 2 ? 'mint' : 'mute'}>已选 {selectedCoals.length} 种</StatusPill>
               </div>
-              <CoalPicker coals={allCoals} loading={coalsQ.isLoading} selected={new Set(cfg.selectedIds)} onToggle={toggleCoal} />
+              <CoalPicker coals={allCoals} heatUnit={heatUnit} loading={coalsQ.isLoading} selected={new Set(cfg.selectedIds)} onToggle={toggleCoal} />
               {selectedCoals.length > 0 && (
                 <div className="row gap-8 wrap mt-16">
                   {selectedCoals.map((c) => (
@@ -289,13 +272,13 @@ export default function SmartBlending() {
               <div className="cwin">
                 <div>
                   <div className="cwin__label">热值</div>
-                  <div className="cwin__unit">kcal/kg</div>
+                  <div className="cwin__unit">{heatUnit}</div>
                 </div>
                 <div className="row gap-10 wrap">
                   <div className="minmax grow" style={{ minWidth: 200 }}>
-                    <input className="input" type="number" value={cfg.constraints.heat_min} onChange={(e) => patchConstraint('heat_min', +e.target.value)} />
+                    <input className="input" type="number" aria-label="热值下限" step="any" value={+heatDisplay(cfg.constraints.heat_min, heatUnit).toFixed(4)} onChange={(e) => patchConstraint('heat_min', heatCanonical(+e.target.value, heatUnit))} />
                     <span className="minmax__sep">–</span>
-                    <input className="input" type="number" value={cfg.constraints.heat_max} onChange={(e) => patchConstraint('heat_max', +e.target.value)} />
+                    <input className="input" type="number" aria-label="热值上限" step="any" value={+heatDisplay(cfg.constraints.heat_max, heatUnit).toFixed(4)} onChange={(e) => patchConstraint('heat_max', heatCanonical(+e.target.value, heatUnit))} />
                   </div>
                 </div>
               </div>
@@ -309,6 +292,7 @@ export default function SmartBlending() {
                     <input
                       className="input"
                       type="number"
+                      aria-label={`${r.label}下限`}
                       step={r.step ?? 1}
                       value={cfg.constraints[r.min] as number}
                       onChange={(e) => patchConstraint(r.min, +e.target.value)}
@@ -317,6 +301,7 @@ export default function SmartBlending() {
                     <input
                       className="input"
                       type="number"
+                      aria-label={`${r.label}上限`}
                       step={r.step ?? 1}
                       value={cfg.constraints[r.max] as number}
                       onChange={(e) => patchConstraint(r.max, +e.target.value)}
@@ -324,7 +309,7 @@ export default function SmartBlending() {
                   </div>
                 </div>
               ))}
-              <button className="btn btn--ghost btn--sm mt-12" onClick={() => setCfg((c) => ({ ...c, constraints: { ...DEFAULT_CONSTRAINTS, ratio_constraints: c.constraints.ratio_constraints } }))}>
+              <button className="btn btn--ghost btn--sm mt-12" onClick={() => setCfg((c) => ({ ...c, constraints: { ...initialSettings.constraints, ratio_constraints: c.constraints.ratio_constraints } }))}>
                 <Icon name="reset" size={14} /> 恢复默认约束
               </button>
             </div>
@@ -337,7 +322,7 @@ export default function SmartBlending() {
                 <div className="step">
                   <span className="step__no">3</span>
                   <span className="step__title">单煤配比边界</span>
-                  <span className="text-xs text-mute">每种煤在混合物中所占比例的上下限</span>
+                  <span className="text-xs text-mute">各批次在混合物中所占比例的上下限</span>
                 </div>
                 <GlobalBound onApply={applyGlobalBound} />
                 <div className="mt-12">
@@ -347,7 +332,7 @@ export default function SmartBlending() {
                       <div className="rbound" key={c.id}>
                         <div>
                           <div className="fw-500 text-sm">{c.name}</div>
-                          <div className="text-xs text-mute">{c.type} · ¥{fixed(c.price, 0)} · {num(c.calorific_value)} kcal</div>
+                          <div className="text-xs text-mute">{c.type} · ¥{fixed(c.price, 0)} · {fixed(heatDisplay(c.calorific_value, heatUnit), 2)} {heatUnit}</div>
                         </div>
                         <div className="minmax">
                           <input className="input" type="number" min={0} max={100} value={b.min} onChange={(e) => setBound(c.id, 'min', +e.target.value)} />
@@ -381,7 +366,7 @@ export default function SmartBlending() {
                 </div>
                 <div className="readout" style={{ textAlign: 'right' }}>
                   <span className="readout__label">热值窗口</span>
-                  <span className="mono fw-500">{num(cfg.constraints.heat_min)}–{num(cfg.constraints.heat_max)}</span>
+                  <span className="mono fw-500">{fixed(heatDisplay(cfg.constraints.heat_min, heatUnit), 2)}–{fixed(heatDisplay(cfg.constraints.heat_max, heatUnit), 2)} {heatUnit}</span>
                 </div>
               </div>
 
@@ -447,7 +432,7 @@ export default function SmartBlending() {
                     </div>
                     <div className="row between">
                       <span className="text-sm text-mute">综合热值</span>
-                      <span className="mono fw-600">{res && feasible ? `${num(res.recommended_solution.total_heat)}` : '—'}</span>
+                      <span className="mono fw-600">{res && feasible ? `${fixed(heatDisplay(res.recommended_solution.total_heat, heatUnit), 2)} ${heatUnit}` : '—'}</span>
                     </div>
                     <div className="row between">
                       <span className="text-sm text-mute">方案状态</span>
@@ -479,6 +464,7 @@ export default function SmartBlending() {
         {result && res && (
           <section className="mt-24">
             <ResultsView
+              heatUnit={heatUnit}
               res={res}
               feasible={feasible}
               constraints={resultConstraints}
@@ -513,11 +499,13 @@ export default function SmartBlending() {
 /* ---------------- coal picker ---------------- */
 function CoalPicker({
   coals,
+  heatUnit,
   loading,
   selected,
   onToggle,
 }: {
-  coals: Coal[];
+  coals: BlendCoal[];
+  heatUnit: string;
   loading: boolean;
   selected: Set<number>;
   onToggle: (id: number) => void;
@@ -561,21 +549,22 @@ function CoalPicker({
           {filtered.map((c) => {
             const picked = selected.has(c.id);
             return (
-              <div key={c.id} className={`coal-pick${picked ? ' is-picked' : ''}`} onClick={() => onToggle(c.id)}>
-                <input type="checkbox" className="check" checked={picked} readOnly />
+              <label key={c.id} className={`coal-pick${picked ? ' is-picked' : ''}`}>
+                <input type="checkbox" className="check" checked={picked} disabled={!picked && !c.assay.eligibility.blending.eligible} onChange={() => onToggle(c.id)} />
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="row gap-8 items-center">
                     <span className="coal-pick__name truncate">{c.name}</span>
                     <span className="tag tag--type">{c.type}</span>
                   </div>
+                  {!c.assay.eligibility.blending.eligible && <div className="text-xs text-amber">{c.assay.eligibility.blending.issues.map(i => i.message).join('；')}</div>}
                   <div className="coal-pick__metrics">
                     <span>¥{fixed(c.price, 0)}</span>
-                    <span>{num(c.calorific_value)} kcal</span>
+                    <span>{fixed(heatDisplay(c.calorific_value, heatUnit), 2)} {heatUnit}</span>
                     <span>灰 {fixed(c.ash_content, 1)}%</span>
                     <span>硫 {fixed(c.total_sulfur, 2)}%</span>
                   </div>
                 </div>
-              </div>
+              </label>
             );
           })}
         </div>
@@ -621,6 +610,7 @@ function RatioSumBar({ sumMin, sumMax }: { sumMin: number; sumMax: number }) {
 
 /* ---------------- results view ---------------- */
 function ResultsView({
+  heatUnit,
   res,
   feasible,
   constraints,
@@ -648,6 +638,7 @@ function ResultsView({
   onCopy: () => void;
   onResolve: () => void;
   resolving: boolean;
+  heatUnit: string;
 }) {
   const s = activeSolution;
   const unverified = res.data_validation?.status === 'unverified';
@@ -706,9 +697,10 @@ function ResultsView({
             {/* readouts */}
             <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 14 }}>
               <MiniReadout label="吨煤成本" value={`¥${fixed(s.total_price, 1)}`} tone="ember" />
-              <MiniReadout label="综合热值" value={num(s.total_heat)} unit="kcal" />
+              <MiniReadout label="综合热值" value={fixed(heatDisplay(s.total_heat, heatUnit), 2)} unit={heatUnit} />
               <MiniReadout label="灰分" value={fixed(s.total_ash, 1)} unit="%" />
               <MiniReadout label="挥发分" value={fixed(s.total_volatile, 1)} unit="%" />
+              <MiniReadout label="固定碳" value={fixed(s.total_fixed_carbon, 1)} unit="%" />
               <MiniReadout label="硫分" value={fixed(s.total_sulfur, 2)} unit="%" />
               <MiniReadout label="质量偏离分" value={fixed(s.quality_penalty, 3)} tone="cyan" />
             </div>
@@ -732,7 +724,7 @@ function ResultsView({
               </ChartPanel>
 
               <ChartPanel title="约束余量雷达" icon="target">
-                <MarginRadar sol={s} constraints={constraints} />
+                <MarginRadar sol={s} constraints={constraints} heatUnit={heatUnit} />
                 <div className="text-xs text-mute" style={{ textAlign: 'center' }}>越靠近中心越接近约束下限，越靠外越接近上限</div>
               </ChartPanel>
 
@@ -742,10 +734,10 @@ function ResultsView({
                     <ConstraintGauge
                       key={r.key}
                       label={r.label}
-                      unit={r.unit}
-                      value={(s as unknown as Record<string, number>)[r.metric] ?? 0}
-                      lo={constraints[r.min] as number}
-                      hi={constraints[r.max] as number}
+                      unit={r.key === 'heat' ? heatUnit : r.unit}
+                      value={r.key === 'heat' ? heatDisplay(s.total_heat, heatUnit) : (s as unknown as Record<string, number>)[r.metric]}
+                      lo={r.key === 'heat' ? heatDisplay(constraints[r.min] as number, heatUnit) : constraints[r.min] as number}
+                      hi={r.key === 'heat' ? heatDisplay(constraints[r.max] as number, heatUnit) : constraints[r.max] as number}
                     />
                   ))}
                 </div>
@@ -772,14 +764,14 @@ function ResultsView({
               </div>
               <div className="panel__body">
                 <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.1fr)', gap: 18, alignItems: 'start' }}>
-                  <ParetoScatter solutions={solutions} recommendedId={recommendedId} activeId={activeId} onPick={onPick} />
+                  <ParetoScatter heatUnit={heatUnit} solutions={solutions} recommendedId={recommendedId} activeId={activeId} onPick={onPick} />
                   <div className="tbl-wrap" style={{ maxHeight: 320 }}>
                     <table className="tbl">
                       <thead>
                         <tr>
                           <th>方案</th>
                           <th className="num">成本</th>
-                          <th className="num">热值</th>
+                          <th className="num">热值 ({heatUnit})</th>
                           <th className="num">灰分</th>
                           <th className="num">硫分</th>
                           <th className="num">偏离分</th>
@@ -800,7 +792,7 @@ function ResultsView({
                               </div>
                             </td>
                             <td className="num text-ember">{fixed(sol.total_price, 1)}</td>
-                            <td className="num">{num(sol.total_heat)}</td>
+                            <td className="num">{fixed(heatDisplay(sol.total_heat, heatUnit), 2)}</td>
                             <td className="num">{fixed(sol.total_ash, 1)}</td>
                             <td className="num">{fixed(sol.total_sulfur, 2)}</td>
                             <td className="num text-cyan">{fixed(sol.quality_penalty, 3)}</td>
@@ -854,7 +846,7 @@ function ConstraintGauge({ label, unit, value, lo, hi }: { label: string; unit: 
       <div className="row between text-xs mb-4">
         <span className="text-soft">{label}</span>
         <span className={`mono ${inside ? 'text-mint' : 'text-danger'}`}>
-          {fixed(value, unit === '%' ? 2 : 0)} {unit}
+          {fixed(value, unit === '%' || unit === 'MJ/kg' ? 2 : 0)} {unit}
         </span>
       </div>
       <div style={{ position: 'relative', height: 6, borderRadius: 999, background: 'var(--surface-inset)', border: '1px solid var(--line)' }}>

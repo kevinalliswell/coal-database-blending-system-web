@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
 import sys
@@ -42,7 +44,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sync-version-only", action="store_true")
     args = parser.parse_args()
-    version = sync_version()
+    if args.sync_version_only:
+        version = sync_version()
+    else:
+        module = ast.parse((ROOT / 'app' / '__version__.py').read_text(encoding='utf-8'))
+        version = next(ast.literal_eval(n.value) for n in module.body if isinstance(n, ast.Assign))
+        for filename in ('package.json', 'package-lock.json'):
+            if json.loads((DESKTOP / filename).read_text(encoding='utf-8'))['version'] != version:
+                raise ValueError('Version mismatch; synchronize manifests in the version-preparation commit first')
+        commit = os.environ.get('CBOS_BUILD_SHA') or subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+        (ROOT / 'build-info.json').write_text(json.dumps({'version':version, 'commit':commit,
+            'built_at':datetime.now(timezone.utc).isoformat()}, indent=2)+'\n', encoding='utf-8')
     print(f"CBOS desktop version: {version}", flush=True)
     if args.sync_version_only:
         return

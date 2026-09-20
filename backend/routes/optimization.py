@@ -7,15 +7,16 @@ import math
 from copy import deepcopy
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import OptimizationHistory
 from app.services.blending_service import OptimizedSmartBlendingAlgorithm
-from app.services.coal_basis_service import validate_blending_basis
-from app.services.coal_data_service import coal_to_algorithm_dict, get_coals_by_ids
-from backend.utils.optimization_validation import normalize_optimization_request
+from app.models.catalog import AssayRevision
+from app.services.access_service import get_settings, user_dict
+from app.services.catalog_service import serialize_assay
+from backend.utils.optimization_validation import normalize_assay_request
 
 logger = logging.getLogger(__name__)
 
@@ -204,47 +205,46 @@ def run_optimization():
     """执行喷煤工艺混煤优化。"""
     try:
         data = request.get_json(silent=True)
-        if not data:
+        if not isinstance(data, dict) or not data:
             return jsonify({'status': 'error', 'message': '请求数据为空'}), 400
 
-        data = normalize_optimization_request(data)
-
-        optimization_target = data.get('optimization_target', '喷煤性价比最优')
-        selected_coal_ids = data.get('selected_coal_ids', [])
-        constraints = data.get('constraints', {})
-        ga_params = data.get('ga_params', {})
-
-        logger.info('收到优化请求')
-        logger.info('  优化目标: %s', optimization_target)
-        logger.info('  选中煤种ID: %s', selected_coal_ids)
-        logger.info('  约束条件: %s', constraints)
-        logger.info('  遗传算法参数: %s', ga_params)
-
-        selected_coals = get_coals_by_ids(selected_coal_ids)
-        if len(selected_coals) < 2:
-            return jsonify({'status': 'error', 'message': '请至少选择两种煤进行混配'}), 400
-
-        selected_ids_found = {coal.id for coal in selected_coals}
-        missing_ids = [coal_id for coal_id in selected_coal_ids if int(coal_id) not in selected_ids_found]
-        if missing_ids:
-            return jsonify({'status': 'error', 'message': f'煤种不存在: {missing_ids}'}), 404
-
-        data_validation = validate_blending_basis(
-            selected_coals, data.get("calculation_mode", "verified"), data.get("ratio_basis", "unknown")
-        )
-        coal_names = [coal.name for coal in selected_coals]
-        coals = [coal_to_algorithm_dict(coal) for coal in selected_coals]
-
-        params = _build_algorithm_params(constraints, selected_coal_ids)
-        ga_config = _build_ga_config(ga_params)
-
+        settings = deepcopy(get_settings())
+        if data.get('settings_version') is not None and data.get('settings_version') != settings['version']:
+            return jsonify(status='error', code='settings_changed', message='系统设置已改变，请刷新并重新确认约束后计算'), 409
+        data = normalize_assay_request(data, settings)
+        optimization_target = data['optimization_target']
+        selected_ids = [item['assay_revision_id'] for item in data['components']]
+        records = [db.session.get(AssayRevision, revision_id) for revision_id in selected_ids]
+        if any(record is None for record in records):
+            return jsonify(status='error', code='record_not_found', message='化验修订不存在，请重新选择'), 404
+        if len({record.batch_id for record in records}) != len(records):
+            return jsonify(status='error', code='data_conflict', message='同一批次一次只能采用一份化验修订'), 422
+        assays = [serialize_assay(record, settings) for record in records]
+        blocked = [{'assay_revision_id': assay['id'], 'label': assay['label'], **issue}
+                   for assay in assays for issue in assay['eligibility']['blending']['issues']
+                   if not assay['eligibility']['blending']['eligible']]
+        if blocked:
+            return jsonify(status='error', code='assay_not_eligible',
+                           message='所选化验记录缺少计算所需数据或存在冲突，请补充后重试', issues=blocked), 422
+        coals = [{'name': assay['label'], **assay['eligibility']['blending']['values']} for assay in assays]
+        coal_names = [coal['name'] for coal in coals]
+        constraints, ga_params = data['constraints'], data['ga_params']
+        params = _build_algorithm_params(constraints, selected_ids)
         algorithm = OptimizedSmartBlendingAlgorithm()
-        algorithm.set_optimizer_config(ga_config)
-        input_snapshot = _build_input_snapshot(selected_coals, coals, params, algorithm.optimizer.config)
-        input_snapshot.update({
-            'calculation_mode': data.get('calculation_mode', 'verified'),
-            'ratio_basis': data_validation['ratio_basis'],
-            'data_validation': deepcopy(data_validation),
+        algorithm.set_optimizer_config(_build_ga_config(ga_params))
+        data_validation = {'status': 'verified', 'ratio_basis': settings['ratio_basis'],
+                           'warnings': [], 'scope': 'input_consistency_only'}
+        input_snapshot = deepcopy({
+            'schema_version': 2, 'formula_version': 'CBOS-assay-2.0',
+            'ratio_basis': settings['ratio_basis'], 'heat_type': settings['heat_type'],
+            'heat_unit': 'kcal/kg', 'data_validation': data_validation,
+            'settings': settings, 'operator': user_dict(g.current_user),
+            'assays': assays,
+            # Keep numeric normalized rows for report readers of the previous schema.
+            'coals': [dict(id=a['id'], name=a['label'], type=a['coal_type'],
+                           **a['eligibility']['blending']['values']) for a in assays],
+            'algorithm_coals': coals, 'algorithm_params': params,
+            'ga_config': algorithm.optimizer.config, 'constraints': constraints,
         })
 
         start_time = datetime.now()
@@ -279,7 +279,7 @@ def run_optimization():
 
     except ValueError as exc:
         logger.error('优化计算参数错误: %s', exc)
-        return jsonify({'status': 'error', 'message': str(exc)}), 400
+        return jsonify({'status': 'error', 'code': 'invalid_request', 'message': str(exc)}), 400
     except Exception as exc:
         logger.exception('优化计算失败')
         return jsonify({'status': 'error', 'message': f'优化计算失败: {exc}'}), 500

@@ -14,12 +14,15 @@ class Coal(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True, index=True)
     type = db.Column(db.String(50), nullable=False, index=True)
-    price = db.Column(db.Float, nullable=False)
-    calorific_value = db.Column(db.Float, nullable=False)
-    ash_content = db.Column(db.Float, nullable=False)
-    volatile_matter = db.Column(db.Float, nullable=False)
-    fixed_carbon = db.Column(db.Float, nullable=False)
-    total_sulfur = db.Column(db.Float, nullable=False)
+    # Legacy assay columns are retained for lossless migration; new records live
+    # in AssayRevision. A catalog master does not require a completed assay.
+    price = db.Column(db.Float)
+    calorific_value = db.Column(db.Float)
+    ash_content = db.Column(db.Float)
+    volatile_matter = db.Column(db.Float)
+    fixed_carbon = db.Column(db.Float)
+    total_sulfur = db.Column(db.Float)
+    archived = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     analysis_basis = db.Column(db.String(16), nullable=False, default="unknown", server_default="unknown")
     calorific_basis = db.Column(db.String(16), nullable=False, default="unknown", server_default="unknown")
     calorific_type = db.Column(db.String(16), nullable=False, default="unknown", server_default="unknown")
@@ -50,6 +53,7 @@ class Coal(db.Model):
             "id": self.id,
             "name": self.name,
             "type": self.type,
+            "archived": self.archived,
             "price": self.price,
             "calorific_value": self.calorific_value,
             "ash_content": self.ash_content,
