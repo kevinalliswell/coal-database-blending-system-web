@@ -135,26 +135,19 @@ def run_smoke(executable: Path, output: Path) -> dict:
             assert health['status'] == 'ok' and health['storage_mode'] == 'sqlite'
             html = backend.request('/').decode('utf-8')
             assert 'assets/' in html and '前端尚未构建' not in html
-            legacy = backend.json('/api/assays')['data']
-            assert len(legacy) == 8
-            assert all(not assay['eligibility']['blending']['eligible'] for assay in legacy)
+            assert backend.json('/api/catalog')['data'] == []
+            assert backend.json('/api/assays')['data'] == []
             settings = backend.json('/api/settings')['data']
-            assays = []
-            for index in range(6):
-                anthracite = index < 3
-                coal = backend.json('/api/catalog', {'name': f'离线验收煤-{index + 1}',
-                    'type': '无烟煤' if anthracite else '烟煤'})['data']
-                batch = backend.json(f'/api/catalog/{coal["id"]}/batches', {'code': '验收批次-001'})['data']
-                values = {'ash_content': 10, 'volatile_matter': 10 if anthracite else 30,
-                          'fixed_carbon': 78 if anthracite else 58, 'total_sulfur': .5,
-                          'total_moisture': 2, 'price': 900 - index * 30,
-                          'calorific_value': 7500 - index * 150}
-                raw = {key: {'value': value, 'unit': 'CNY/t' if key == 'price' else 'kcal/kg' if key == 'calorific_value' else '%',
-                             'basis': 'ar'} for key, value in values.items()}
-                raw['calorific_value']['heat_type'] = 'net_v'
-                assay = backend.json(f'/api/batches/{batch["id"]}/assays', {'raw': raw})['data']
-                assert assay['eligibility']['blending']['eligible'], assay
-                assays.append(assay)
+            assert backend.request('/api/catalog/test-data?format=xlsx').startswith(b'PK')
+            sample = backend.request('/api/catalog/test-data?format=csv').decode('utf-8-sig')
+            preview = backend.json('/api/catalog/import/preview', {'text': sample})['data']
+            assert preview['can_commit'] and len(preview['rows']) == 6
+            imported = backend.json('/api/catalog/import/commit', {'preview_token': preview['preview_token']})['data']
+            assert imported['created_revisions'] == 6
+            assays = backend.json('/api/assays')['data']
+            assert len(assays) == 6
+            assert [a['coal_type'] for a in assays] == ['无烟煤'] * 3 + ['烟煤'] * 3
+            assert all(a['eligibility']['blending']['eligible'] and a['eligibility']['theory']['eligible'] for a in assays)
             selected_ids = [assay['id'] for assay in assays]
             constraints = {'heat_min': 0, 'heat_max': 10000, 'ash_min': 0, 'ash_max': 100,
                 'volatile_min': 0, 'volatile_max': 100, 'fixed_carbon_min': 0, 'fixed_carbon_max': 100,
@@ -171,9 +164,21 @@ def run_smoke(executable: Path, output: Path) -> dict:
             assert result['input_snapshot']['schema_version'] == 2
             assert math.isclose(sum(ratios), 1, abs_tol=1e-8)
             assert all(.05 - 1e-8 <= ratio <= .60 + 1e-8 for ratio in ratios)
-            for result_key, metric in [('total_price', 'price'), ('total_heat', 'calorific_value')]:
-                expected = sum(ratio * assay['eligibility']['blending']['values'][metric] for assay, ratio in zip(assays, ratios))
-                assert math.isclose(solution[result_key], expected, rel_tol=1e-8, abs_tol=1e-6)
+            for candidate in [*solution['pareto_solutions'], solution['recommended_solution']]:
+                weights = candidate['optimal_ratios']
+                assert len(weights) == 6 and math.isclose(sum(weights), 1, abs_tol=1e-8)
+                assert all(.05 - 1e-8 <= value <= .60 + 1e-8 for value in weights)
+                totals = dict(total_price=0., total_heat=0., total_ash=0., total_volatile=0., total_fixed_carbon=0., total_sulfur=0.)
+                for i, weight in enumerate(weights):
+                    dry, ash = 1 - [7, 8, 9, 9, 10, 11][i] / 100, [9, 10.5, 12, 8, 10, 11.5][i]
+                    volatile = [7, 9, 11, 28, 33, 37][i] * (100 - ash) / 100
+                    for key, value in dict(total_price=[1100, 980, 900, 930, 850, 780][i],
+                        total_heat=[28.8, 28.1, 27.3, 27.7, 26.8, 26][i] / .0041868,
+                        total_ash=ash * dry, total_volatile=volatile * dry,
+                        total_fixed_carbon=(100 - ash - volatile) * dry, total_sulfur=(.45 + .04 * i) * dry).items():
+                        totals[key] += weight * value
+                for key, value in totals.items():
+                    assert math.isclose(candidate[key], value, rel_tol=1e-8, abs_tol=1e-6), key
             history = backend.json('/api/optimization/history')['data']
             assert len(history) == 1
             history_id = history[0]['id']
@@ -181,6 +186,15 @@ def run_smoke(executable: Path, output: Path) -> dict:
             with zipfile.ZipFile(io.BytesIO(report)) as workbook:
                 assert 'xl/workbook.xml' in workbook.namelist()
             (output / 'optimization-report.xlsx').write_bytes(report)
+            theory = backend.json('/api/calculate_theory_ratio', {'settings_version': settings['version'],
+                'assay_revision_id': assays[0]['id'], 'coal_params': {'heat_unit': 'kJ/kg', 'decomposition_heat': 920, 'physical_heat': 1884},
+                'coke_params': {'analysis_basis': 'd', 'carbon_content': .86, 'ash_content': .11, 'sio2_content': .52},
+                'blast_furnace_params': {'eta_co': .4444, 'slag_basicity': 1.15, 'slag_enthalpy': 1800, 'hot_blast_enthalpy': 1534}})
+            assert math.isfinite(theory['ratio']) and theory['ratio'] > 0
+            actual = backend.json('/api/calculate_actual_ratio', {'settings_version': settings['version'], 'mass_basis': 'd',
+                'furnace_id': 'SMOKE-BF', 'period_before': 'before', 'period_after': 'after', 'correction_mode': 'none',
+                'production_data': {'initial_coke_ratio': 400, 'final_coke_ratio': 370, 'initial_coal_ratio': 150, 'final_coal_ratio': 180}})
+            assert actual['ratio'] == 1 and actual['input_snapshot']['schema_version'] == 2
             # Same batch creates a new immutable revision; the old result keeps its original input.
             revised_raw = {**assays[0]['raw'], 'price': {'value': 950, 'unit': 'CNY/t', 'basis': 'ar'}}
             updated = backend.json(f'/api/batches/{assays[0]["batch_id"]}/assays', {'raw': revised_raw})['data']
@@ -195,8 +209,8 @@ def run_smoke(executable: Path, output: Path) -> dict:
                 assert error.code == 401
             backend.login()
             restored = backend.json('/api/assays')['data']
-            assert len(restored) == len(legacy) + 7
-            assert next(item for item in restored if item['id'] == assays[0]['id'])['raw']['price']['value'] == 900
+            assert len(restored) == 7
+            assert next(item for item in restored if item['id'] == assays[0]['id'])['raw']['price']['value'] == 1100
             assert next(item for item in restored if item['id'] == updated['id'])['raw']['price']['value'] == 950
             persisted = backend.json(f'/api/optimization/history/{history_id}')['data']
             assert persisted['result_payload']['input_snapshot'] == result['input_snapshot']
@@ -209,7 +223,8 @@ def run_smoke(executable: Path, output: Path) -> dict:
                 'history_id': history_id, 'restart_persistence': True, 'xlsx_export': True,
                 'parent_eof_shutdown': True, 'unauthenticated_rejected': True,
                 'initial_admin_setup': True, 'immutable_assay_revisions': True,
-                'settings_persistence': True, 'legacy_unknown_ineligible': True}
+                'settings_persistence': True, 'fresh_database_empty': True, 'downloaded_test_data_imported': True,
+                'theory_and_actual_ratio': True, 'six_metric_independent_recomputation': True}
 
 
 def main() -> None:

@@ -20,11 +20,11 @@ def candidate(count=6):
     result = {'optimal_ratios': ratios}
     values = dict(total_price=0., total_heat=0., total_ash=0., total_volatile=0., total_fixed_carbon=0., total_sulfur=0.)
     for i, ratio in enumerate(ratios):
-        dry, ash = 1 - (8+i)/100, 10+i
-        volatile = (9+i if i < 3 else 32+i) * (100-ash)/100
-        for field, value in dict(total_price=950-50*i, total_heat=(29-.4*i)/.0041868,
+        dry, ash = 1 - [7, 8, 9, 9, 10, 11][i]/100, [9, 10.5, 12, 8, 10, 11.5][i]
+        volatile = [7, 9, 11, 28, 33, 37][i] * (100-ash)/100
+        for field, value in dict(total_price=[1100, 980, 900, 930, 850, 780][i], total_heat=[28.8, 28.1, 27.3, 27.7, 26.8, 26][i]/.0041868,
                                 total_ash=ash*dry, total_volatile=volatile*dry,
-                                total_fixed_carbon=(100-ash-volatile)*dry, total_sulfur=(.5+.03*i)*dry).items():
+                                total_fixed_carbon=(100-ash-volatile)*dry, total_sulfur=(.45+.04*i)*dry).items():
             values[field] += ratio * value
     return {**result, **values}
 

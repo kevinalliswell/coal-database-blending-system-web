@@ -10,7 +10,7 @@ from app.extensions import db
 from app.models.coal import Coal
 from app.models.catalog import AssayRevision, CoalBatch
 from app.services import catalog_service as service
-from app.services.catalog_import import commit_import, export_catalog, preview_import
+from app.services.catalog_import import commit_import, export_catalog, export_test_data, preview_import
 
 catalog_bp = Blueprint('catalog', __name__, url_prefix='/api')
 
@@ -191,4 +191,11 @@ def export_records():
     content, mime, filename = export_catalog(request.args.get('format', 'xlsx'),
                                              template=request.path.endswith('/template'),
                                              include_archived=boolean_query('include_archived', True))
+    return send_file(io.BytesIO(content), mimetype=mime, as_attachment=True, download_name=filename)
+
+
+@catalog_bp.get('/catalog/test-data')
+@endpoint
+def download_test_data():
+    content, mime, filename = export_test_data(request.args.get('format', 'xlsx'))
     return send_file(io.BytesIO(content), mimetype=mime, as_attachment=True, download_name=filename)

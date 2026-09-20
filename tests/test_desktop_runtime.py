@@ -29,8 +29,6 @@ def resources(tmp_path):
     (root / 'frontend' / 'dist' / 'assets').mkdir(parents=True)
     (root / 'frontend' / 'dist' / 'index.html').write_text('<h1>desktop fixture</h1>', encoding='utf-8')
     (root / 'frontend' / 'dist' / 'assets' / 'app.js').write_text('window.desktopFixture=true;', encoding='utf-8')
-    (root / 'data').mkdir()
-    shutil.copyfile(ROOT / 'data' / 'test_coal_datas.csv', root / 'data' / 'test_coal_datas.csv')
     shutil.copytree(ROOT / 'migrations', root / 'migrations', ignore=shutil.ignore_patterns('__pycache__'))
     return root
 
@@ -60,14 +58,14 @@ def test_token_protects_health_api_spa_and_assets_before_any_route(tmp_path, res
         client = signed_in_client(app)
         assert b'desktop fixture' in client.get('/').data
         rows = client.get('/api/assays').get_json()['data']
-        assert len(rows) == 8
-        assert all(not row['eligibility']['blending']['eligible'] for row in rows)
-        assert rows[0]['raw']['calorific_value']['value'] == 7419
+        assert rows == []
+        assert client.get('/api/catalog').get_json()['data'] == []
+        assert not (resources / 'data').exists(), 'Fresh startup must not need a bundled coal file'
     finally:
         close_app(app)
 
 
-def test_user_data_persists_and_archived_demo_coals_do_not_return(tmp_path, resources, monkeypatch):
+def test_user_data_persists_and_archived_coals_do_not_return(tmp_path, resources, monkeypatch):
     data_dir = tmp_path / 'user data 中文'
     forbidden = tmp_path / 'inherited-production.db'
     monkeypatch.setenv('DATABASE_URL', f'sqlite:///{forbidden}')
@@ -93,7 +91,7 @@ def test_user_data_persists_and_archived_demo_coals_do_not_return(tmp_path, reso
         assert app.test_client().get('/api/catalog', headers=HEADERS).status_code == 401
         client = signed_in_client(app)
         coals = client.get('/api/catalog').get_json()['data']
-        assert len(coals) == 9 and any(coal['name'] == '我的煤' for coal in coals)
+        assert len(coals) == 1 and coals[0]['name'] == '我的煤'
         for coal in coals:
             assert client.patch(f'/api/catalog/{coal["id"]}', json={'archived': True}).status_code == 200
     finally:
@@ -102,7 +100,7 @@ def test_user_data_persists_and_archived_demo_coals_do_not_return(tmp_path, reso
     try:
         client = signed_in_client(app)
         assert client.get('/api/catalog').get_json()['data'] == []
-        assert len(client.get('/api/catalog?include_archived=true').get_json()['data']) == 9
+        assert len(client.get('/api/catalog?include_archived=true').get_json()['data']) == 1
     finally:
         close_app(app)
     assert not forbidden.exists()
@@ -157,7 +155,7 @@ def test_percent_in_install_and_user_paths_supports_first_start_and_upgrade(tmp_
     app = desktop_app(data_dir, install)
     try:
         rows = signed_in_client(app).get('/api/coals?page_size=0').get_json()['data']
-        assert len(rows) == (1 if existing_revision else 8)
+        assert len(rows) == (1 if existing_revision else 0)
         assert all(row['analysis_basis'] == 'unknown' for row in rows)
         if existing_revision:
             assert (rows[0]['name'], rows[0]['fixed_carbon']) == ('保留原值', 77.5)

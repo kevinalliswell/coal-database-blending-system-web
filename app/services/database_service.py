@@ -36,12 +36,11 @@ def _online_backup(database: Path) -> Path:
     return backup
 
 
-def _migrate_and_seed(app, resources: Path, database: Path):
+def _migrate_database(app, resources: Path, database: Path):
     from alembic import command
     from alembic.config import Config as AlembicConfig
     from alembic.script import ScriptDirectory
     from app.extensions import db
-    from app.services.coal_data_service import seed_from_csv
 
     migrations = resources / 'migrations'
     config = AlembicConfig(str(migrations / 'alembic.ini'))
@@ -65,13 +64,6 @@ def _migrate_and_seed(app, resources: Path, database: Path):
                 # without escaping '%' in valid installation directory names.
                 # env.py still reads the registered Flask-Migrate extension.
                 command.upgrade(config, 'head')
-            if fresh:
-                summary = seed_from_csv(resources / 'data' / 'test_coal_datas.csv')
-                if summary.skipped_count or not summary.created_count:
-                    raise RuntimeError('内置示例煤导入失败；请检查安装资源。')
-            if fresh:
-                from app.services.catalog_service import backfill_legacy_catalog
-                backfill_legacy_catalog()
             db.session.remove()
     finally:
         sys.dont_write_bytecode = previous_bytecode
@@ -88,7 +80,7 @@ def initialize_database(app):
             raise RuntimeError('生产初始化需要持久化 SQLite 文件')
         database = Path(url.database).resolve()
         database.parent.mkdir(parents=True, exist_ok=True)
-        _migrate_and_seed(app, resources, database)
+        _migrate_database(app, resources, database)
     else:
         # MySQL backups are deployment-owned and must precede this command.
         with app.app_context():

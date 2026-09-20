@@ -59,20 +59,6 @@ class API:
         return self.call('/api/auth/login', {'username': username, 'password': password})
 
 
-def raw_assay(index):
-    values = {
-        'total_moisture': (8 + index, '%', 'ar'), 'ash_content': (10 + index, '%', 'd'),
-        'volatile_matter': (9 + index if index < 3 else 32 + index, '%', 'daf'),
-        'total_sulfur': (.5 + .03 * index, '%', 'd'), 'calorific_value': (29 - .4 * index, 'MJ/kg', 'ar'),
-        'price': (950 - 50 * index, 'CNY/t', 'ar'), 'carbon_content': (78, '%', 'd'),
-        'hydrogen_content': (3.5, '%', 'd'), 'sio2_content': (48, '%', 'ash'),
-    }
-    raw = {key: dict(value=value, unit=unit, basis=basis) for key, (value, unit, basis) in values.items()}
-    raw['calorific_value']['heat_type'] = 'net_v'
-    raw['hydrogen_content']['hydrogen_includes_moisture'] = False
-    return raw
-
-
 def verify_blend(payload):
     assert payload['status'] == 'success' and payload['history_saved']
     assert payload['input_snapshot']['schema_version'] == 2
@@ -87,12 +73,12 @@ def verify_blend(payload):
         assert all(.05 - 1e-8 <= value <= .6 + 1e-8 for value in ratios)
         expected = dict(total_price=0., total_heat=0., total_ash=0., total_volatile=0., total_fixed_carbon=0., total_sulfur=0.)
         for i, ratio in enumerate(ratios):
-            dry = 1 - (8 + i) / 100
-            ash = 10 + i
-            volatile = (9 + i if i < 3 else 32 + i) * (100 - ash) / 100
-            for key, value in dict(total_price=950-50*i, total_heat=(29-.4*i)/.0041868,
+            dry = 1 - [7, 8, 9, 9, 10, 11][i] / 100
+            ash = [9, 10.5, 12, 8, 10, 11.5][i]
+            volatile = [7, 9, 11, 28, 33, 37][i] * (100 - ash) / 100
+            for key, value in dict(total_price=[1100, 980, 900, 930, 850, 780][i], total_heat=[28.8, 28.1, 27.3, 27.7, 26.8, 26][i]/.0041868,
                     total_ash=ash*dry, total_volatile=volatile*dry,
-                    total_fixed_carbon=(100-ash-volatile)*dry, total_sulfur=(.5+.03*i)*dry).items():
+                    total_fixed_carbon=(100-ash-volatile)*dry, total_sulfur=(.45+.04*i)*dry).items():
                 expected[key] += ratio * value
         for key, value in expected.items():
             assert math.isclose(candidate[key], value, abs_tol=1e-5), key
@@ -199,16 +185,18 @@ with sqlite3.connect(backup) as db:
             return {'scenario': 'upgrade-from-1.x', 'passed': True, 'backup_count': 1, 'backup_content_verified':True,
                     'raw_values_preserved': True, 'system': info, **assets}
 
-        seeded = api.call('/api/catalog')['data']
-        assert len(seeded) == 8, 'Fresh install must seed the eight historical examples exactly once'
-        assert all(not coal['batches'][0]['latest_assay']['eligibility']['blending']['eligible'] for coal in seeded)
-        assays = []
-        for i in range(6):
-            coal = api.call('/api/catalog', {'name': f'容器验收煤{i+1}', 'type': '无烟煤' if i < 3 else '烟煤'}, expected=201)['data']
-            batch = api.call(f'/api/catalog/{coal["id"]}/batches', {'code': 'B001'}, expected=201)['data']
-            assay = api.call(f'/api/batches/{batch["id"]}/assays', {'raw': raw_assay(i)}, expected=201)['data']
-            assert assay['eligibility']['blending']['eligible']
-            assays.append(assay)
+        assert api.call('/api/catalog')['data'] == [], 'Fresh installs must start without coal records'
+        assert api.call('/api/assays')['data'] == []
+        assert api.call('/api/catalog/test-data?format=xlsx', binary=True).startswith(b'PK')
+        sample = api.call('/api/catalog/test-data?format=csv', binary=True).decode('utf-8-sig')
+        preview = api.call('/api/catalog/import/preview', {'text': sample})['data']
+        assert preview['can_commit'] and len(preview['rows']) == 6
+        imported = api.call('/api/catalog/import/commit', {'preview_token': preview['preview_token']}, expected=201)['data']
+        assert imported['created_revisions'] == 6
+        assays = api.call('/api/assays')['data']
+        assert len(assays) == 6
+        assert [a['coal_type'] for a in assays] == ['无烟煤'] * 3 + ['烟煤'] * 3
+        assert all(a['eligibility']['blending']['eligible'] and a['eligibility']['theory']['eligible'] for a in assays)
         request = {'settings_version': 1, 'components': [dict(assay_revision_id=a['id'], min_ratio=5, max_ratio=60) for a in assays],
                    'constraints': {'heat_min': 5800, 'heat_max': 7800, 'volatile_min': 0, 'fixed_carbon_min': 0},
                    'ga_params': {'population_size': 24, 'max_generations': 8, 'tournament_size': 3, 'random_seed': 37}}
@@ -225,7 +213,7 @@ with sqlite3.connect(backup) as db:
         invalid = {**request, 'components': [dict(assay_revision_id=a['id'], min_ratio=0, max_ratio=100) for a in (assays[0], partial)]}
         assert api.call('/api/optimization', invalid, expected=422)['code'] == 'data_conflict'
         second_batch = api.call(f'/api/catalog/{assays[0]["coal_id"]}/batches', {'code': 'B002'}, expected=201)['data']
-        second = api.call(f'/api/batches/{second_batch["id"]}/assays', {'raw': raw_assay(1)}, expected=201)['data']
+        second = api.call(f'/api/batches/{second_batch["id"]}/assays', {'raw': assays[1]['raw']}, expected=201)['data']
         same_coal = {**request, 'components': [dict(assay_revision_id=a['id'], min_ratio=40, max_ratio=60) for a in (assays[0], second)]}
         assert api.call('/api/optimization', same_coal)['status'] == 'success'
         api.call('/api/catalog/template?format=xlsx', binary=True)
@@ -236,7 +224,11 @@ with sqlite3.connect(backup) as db:
         api.call('/api/calculate_theory_ratio', {'settings_version': 1, 'assay_revision_id': assays[0]['id'],
             'coal_params': {'heat_unit':'kJ/kg','decomposition_heat':920,'physical_heat':1884},
             'coke_params': {'analysis_basis':'d','carbon_content':.86,'ash_content':.11,'sio2_content':.52},
-            'blast_furnace_params': {'eta_co':.4444,'slag_basicity':1.15,'slag_enthalpy':1800,'hot_blast_enthalpy':1.5}})
+            'blast_furnace_params': {'eta_co':.4444,'slag_basicity':1.15,'slag_enthalpy':1800,'hot_blast_enthalpy':1534}})
+        actual = api.call('/api/calculate_actual_ratio', {'settings_version': 1, 'mass_basis': 'd',
+            'furnace_id': 'SMOKE-BF', 'period_before': 'before', 'period_after': 'after', 'correction_mode': 'none',
+            'production_data': {'initial_coke_ratio': 400, 'final_coke_ratio': 370, 'initial_coal_ratio': 150, 'final_coal_ratio': 180}})
+        assert actual['ratio'] == 1 and actual['input_snapshot']['schema_version'] == 2
         # Actual role enforcement is observed through separate cookie jars.
         for role in ('data_manager', 'calculator', 'viewer'):
             api.call('/api/users', {'username': role, 'password': password, 'role': role}, expected=201)
@@ -263,6 +255,7 @@ with sqlite3.connect(backup) as db:
         persisted = api.call(f'/api/optimization/history/{history["id"]}')['data']['result_payload']['input_snapshot']
         assert persisted == snapshot
         return {'scenario':'fresh-install', 'passed':True, 'system':info, 'coal_mix':'3 anthracite + 3 bituminous',
+                'fresh_database_empty':True, 'downloaded_test_data_imported':True, 'actual_ratio':True,
                 'pareto_candidates_recomputed':len(result['result']['pareto_solutions']),
                 'recommendation_recomputed':True,
                 'same_coal_multiple_batches':True, 'partial_storage':True, 'import_export':True,

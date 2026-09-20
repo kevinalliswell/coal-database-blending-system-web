@@ -4,6 +4,7 @@ import { repHistory, repHistoryDetail } from '../lib/api';
 import { qk } from '../lib/query';
 import { Icon } from '../components/ui/Icon';
 import { EmptyState, SkeletonRows, StatPanel, StatusPill } from '../components/ui/bits';
+import { QueryError } from '../components/ui/QueryError';
 import { Drawer } from '../components/ui/Overlay';
 import { fixed, shortDate, num } from '../lib/format';
 import { useDebounced } from '../hooks/useDebounced';
@@ -67,10 +68,12 @@ export default function HistoryReplacement() {
         </div>
 
         <div className="panel__body">
-          {hist.isLoading ? (
+          {hist.isError ? (
+            <QueryError message="历史记录读取失败" onRetry={() => void hist.refetch()} />
+          ) : hist.isLoading ? (
             <SkeletonRows rows={6} cols={5} />
           ) : filtered.length === 0 ? (
-            <EmptyState icon="history" title="暂无历史记录" sub="进行一次置换比计算后，记录会显示在这里。" />
+            <EmptyState icon="history" title={rows.length ? "没有匹配的记录" : "暂无历史记录"} sub="进行一次置换比计算后，记录会显示在这里。" />
           ) : (
             <div className="tbl-wrap">
               <table className="tbl">
@@ -136,7 +139,9 @@ function RepDetailDrawer({ id, onClose }: { id: number | null; onClose: () => vo
 
   return (
     <Drawer open={id !== null} onClose={onClose} title="置换比计算详情" subtitle={d ? shortDate(d.date) : ''} icon={<Icon name="scale" size={18} />}>
-      {detail.isLoading || !d ? (
+      {detail.isError ? (
+        <QueryError message="详情读取失败" onRetry={() => void detail.refetch()} />
+      ) : detail.isLoading || !d ? (
         <SkeletonRows rows={8} cols={2} />
       ) : (
         <div className="col gap-18">

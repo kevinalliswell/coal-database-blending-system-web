@@ -24,7 +24,7 @@ export default function UserAdmin() {
   }
   if (!can('admin')) return <div className="page"><p>需要管理员权限。</p></div>;
   return <div className="page"><div className="page__head"><div><h1 className="page__title">用户与权限</h1><p className="page__lead">账号属于当前部署。停用、修改角色或重置密码后，原会话立即失效。</p></div></div>
-    <section className="panel v2-card v2-help"><h2>四种固定角色</h2><table><thead><tr><th>角色</th><th>可执行操作</th></tr></thead><tbody>
+    <section className="panel v2-card role-summary"><h2>四种固定角色</h2><table><thead><tr><th>角色</th><th>可执行操作</th></tr></thead><tbody>
       <tr><td>管理员</td><td>所有操作、用户管理和系统设置</td></tr><tr><td>数据维护员</td><td>维护煤种、批次及化验记录</td></tr><tr><td>计算员</td><td>执行混煤优化和置换比计算</td></tr><tr><td>只读</td><td>查看数据和历史</td></tr>
     </tbody></table><p className="text-mute">所有登录账号都可查看及导出共享数据和历史。系统至少保留一位启用的管理员。</p></section>
     <section className="panel v2-card"><h2>创建账号</h2><form className="v2-form" onSubmit={create}><div className="v2-grid">
@@ -33,7 +33,7 @@ export default function UserAdmin() {
       <label>角色<select value={role} onChange={e => setRole(e.target.value)}>{roles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>初始密码<input required type="password" minLength={12} maxLength={128} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="至少 12 位" /></label>
     </div><div className="v2-actions"><button className="btn btn--primary" disabled={busy}>{busy ? '正在创建…' : '创建账号'}</button><span role="status">{message}</span></div><p className="v2-error" role="alert">{error}</p></form></section>
-    <h2>已有账号 · {users.length}</h2>{users.map(account => <UserEditor key={`${account.id}-${account.role}-${account.active}`} account={account} own={account.id === user.id} onSaved={async () => { await load(); await refresh(); }} />)}
+    <h2 className="v2-section-title">已有账号 · {users.length}</h2>{users.map(account => <UserEditor key={`${account.id}-${account.role}-${account.active}`} account={account} own={account.id === user.id} onSaved={async () => { await load(); await refresh(); }} />)}
   </div>;
 }
 

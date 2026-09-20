@@ -8,7 +8,6 @@ root = Path(SPECPATH).parent
 data_files = [
     (str(root / "build-info.json"), "."),
     (str(root / "frontend" / "dist"), "frontend/dist"),
-    (str(root / "data" / "test_coal_datas.csv"), "data"),
     (str(root / "migrations"), "migrations"),
 ]
 # Alembic loads migration templates and dialect implementations dynamically.

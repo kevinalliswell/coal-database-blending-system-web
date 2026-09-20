@@ -339,6 +339,24 @@ def export_catalog(format='xlsx', *, template=False, include_archived=True):
                     row.update({f'{metric}.{part}': value for part, value in details.items()})
             records.append([row.get(header) for header in HEADERS])
     basename = 'cbos-assay-template' if template else 'cbos-assays'
+    return _export_table(records, format, basename)
+
+
+def export_test_data(format='xlsx'):
+    """Download only; importing always requires the existing preview/commit flow."""
+    from app.services.catalog_test_data import test_coal_records
+    records = []
+    for record in test_coal_records():
+        row = {key: value for key, value in record.items() if key != 'raw'}
+        for metric, details in record['raw'].items():
+            row.update({f'{metric}.{part}': value for part, value in details.items()})
+        records.append([row.get(header) for header in HEADERS])
+    return _export_table(records, format, 'cbos-six-coal-test-data')
+
+
+def _export_table(records, format, basename):
+    if format not in ('csv', 'xlsx'):
+        raise ValueError('format仅支持csv或xlsx')
     if format == 'xlsx':
         workbook = Workbook()
         sheet = workbook.active

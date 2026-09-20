@@ -11,7 +11,8 @@ venv
 .pytest_cache
 .mypy_cache
 
-# local data / runtime products (image seeds from data/*.csv, not the db)
+# Local data and historical source CSVs are not production image inputs.
+data/
 data/coal_system.db
 data/uploads
 data/history

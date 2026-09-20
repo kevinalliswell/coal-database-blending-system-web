@@ -6,6 +6,7 @@ import { dataValidationLabel } from '../lib/blendingResult';
 import { historyProvenance } from '../lib/historyProvenance';
 import { Icon } from '../components/ui/Icon';
 import { EmptyState, SkeletonRows, StatPanel, StatusPill } from '../components/ui/bits';
+import { QueryError } from '../components/ui/QueryError';
 import { Drawer } from '../components/ui/Overlay';
 import { RatioDonut } from '../components/blending/charts';
 import { fixed, num, shortDate } from '../lib/format';
@@ -71,10 +72,12 @@ export default function HistoryBlending() {
         </div>
 
         <div className="panel__body">
-          {hist.isLoading ? (
+          {hist.isError ? (
+            <QueryError message="历史记录读取失败" onRetry={() => void hist.refetch()} />
+          ) : hist.isLoading ? (
             <SkeletonRows rows={6} cols={6} />
           ) : filtered.length === 0 ? (
-            <EmptyState icon="history" title="暂无历史记录" sub="运行一次混煤优化后，记录会显示在这里。" />
+            <EmptyState icon="history" title={rows.length ? "没有匹配的记录" : "暂无历史记录"} sub="运行一次混煤优化后，记录会显示在这里。" />
           ) : (
             <div className="tbl-wrap">
               <table className="tbl">
@@ -152,7 +155,9 @@ function DetailDrawer({ id, onClose }: { id: number | null; onClose: () => void 
 
   return (
     <Drawer open={id !== null} onClose={onClose} title="优化历史详情" subtitle={d ? shortDate(d.date) : ''} icon={<Icon name="beaker" size={18} />} wide>
-      {detail.isLoading || !d ? (
+      {detail.isError ? (
+        <QueryError message="详情读取失败" onRetry={() => void detail.refetch()} />
+      ) : detail.isLoading || !d ? (
         <SkeletonRows rows={8} cols={2} />
       ) : (
         <div className="col gap-18">

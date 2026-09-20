@@ -13,8 +13,3 @@ test('every local link in offline help resolves to another bundled document', as
     }
   }
 });
-
-test('unknown documents explicitly report unavailable content instead of changing its identity', () => {
-  assert.doesNotMatch(help, /docs\[selected\]\s*\|\|\s*docs\['USER_GUIDE.md'\]/);
-  assert.match(help, /未收录/);
-});

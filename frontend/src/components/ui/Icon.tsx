@@ -2,6 +2,7 @@
    24x24 viewBox, currentColor stroke, Feather-esque geometry. */
 
 const P: Record<string, string> = {
+  menu: 'M4 6h16M4 12h16M4 18h16',
   flame:
     'M12 3c1.8 2.6 1 4.2-.2 5.6 2.2-.4 3.4 1.2 3.4 3.4a4.2 4.2 0 1 1-8.4 0c0-1.6.7-2.9 1.8-4-.2 2 .9 3 2 3.2C10.8 12 9 9.5 12 3Z',
   home: 'M4 11 12 4l8 7M6 10v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9',

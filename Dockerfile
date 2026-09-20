@@ -36,7 +36,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY backend ./backend
 COPY migrations ./migrations
-COPY data/test_coal_datas.csv ./data/test_coal_datas.csv
 COPY static ./static
 COPY run.py wsgi.py pyproject.toml ./
 COPY --chmod=755 scripts/container-entrypoint.sh /usr/local/bin/cbos-entrypoint

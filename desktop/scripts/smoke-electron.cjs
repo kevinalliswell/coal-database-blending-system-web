@@ -33,7 +33,7 @@ async function launch(setup) {
   await page.getByLabel('密码', {exact: true}).fill('Smoke-password-2026!');
   if (setup) await page.getByLabel('确认密码', {exact: true}).fill('Smoke-password-2026!');
   await page.getByRole('button', {name: setup ? '创建并登录' : '登录', exact: true}).click();
-  await page.getByText('服务在线 · sqlite', {exact: true}).waitFor();
+  await page.getByText('服务在线', {exact: true}).waitFor();
   assert.equal(await page.getByText('演示数据', {exact: true}).count(), 0);
   assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
   assert.equal(await page.evaluate(() => document.cookie.includes('cbos_session')), false);
@@ -67,26 +67,54 @@ async function saveDownload(button, filename) {
 (async () => {
   await launch(true);
   const build = (await api('/api/system/info')).data;
-  const legacy = (await api('/api/assays')).data;
-  assert.equal(legacy.length, 8);
-  assert.ok(legacy.every(a => !a.eligibility.blending.eligible));
-  const assays = [];
-  for (let i = 0; i < 6; i++) {
-    const coal = (await api('/api/catalog', {name: `桌面验收${i < 3 ? '无烟煤' : '烟煤'}-${i + 1}`, type: i < 3 ? '无烟煤' : '烟煤'})).data;
-    const batch = (await api(`/api/catalog/${coal.id}/batches`, {code: '到货批次-001'})).data;
-    const values = {ash_content: 10, volatile_matter: i < 3 ? 10 : 30,
-      fixed_carbon: i < 3 ? 78 : 58, total_sulfur: .5, total_moisture: 2,
-      price: 900 - i * 30, calorific_value: 7500 - i * 150, carbon_content: 78,
-      hydrogen_content: 3, nitrogen_content: 1, sio2_content: 48};
-    const raw = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, {value,
-      unit: key === 'price' ? 'CNY/t' : key === 'calorific_value' ? 'kcal/kg' : '%',
-      basis: key === 'sio2_content' ? 'ash' : 'ar'}]));
-    raw.calorific_value.heat_type = 'net_v';
-    raw.hydrogen_content.hydrogen_includes_moisture = false;
-    const assay = (await api(`/api/batches/${batch.id}/assays`, {raw})).data;
-    assert.ok(assay.eligibility.blending.eligible && assay.eligibility.theory.eligible, JSON.stringify(assay));
-    assays.push(assay);
-  }
+  assert.deepEqual((await api('/api/catalog')).data, []);
+  assert.deepEqual((await api('/api/assays')).data, []);
+  // Packaged Windows check: checkout CRLF must still render semantic Markdown.
+  await page.locator('nav a[href="/help"]').click();
+  const manual = page.getByRole('article', {name: '操作手册', exact: true});
+  await manual.getByRole('heading', {name: '操作手册', level: 2, exact: true}).waitFor();
+  await manual.getByRole('heading', {name: '录入煤种与化验', level: 3, exact: true}).waitFor();
+  const recordTable = manual.getByRole('table').filter({has: page.getByRole('columnheader', {name: '记录', exact: true})});
+  assert.equal(await recordTable.count(), 1);
+  assert.equal(await recordTable.getByRole('columnheader').count(), 3);
+  await recordTable.getByRole('cell', {name: '化验修订', exact: true}).waitFor();
+  assert.ok(await manual.getByRole('list').count() > 0, 'Markdown lists must render as lists');
+  assert.equal(await manual.locator('pre').count(), 0, 'The manual must not become one raw code block');
+  await page.locator('nav a[href="/about"]').click();
+  await page.getByRole('heading', {name: '关于 CBOS', exact: true}).waitFor();
+  await page.getByRole('heading', {name: '运行信息', exact: true}).waitFor();
+  assert.equal(await page.getByText(/更新记录|更新日志|CHANGELOG/).count(), 0);
+  // Exercise the responsive drawer in Chromium even though the native desktop
+  // window has a larger minimum width. Initial focus must wait for visibility.
+  const desktopViewport = await page.evaluate(() => ({width: innerWidth, height: innerHeight}));
+  await page.setViewportSize({width: 390, height: 844});
+  await page.getByRole('button', {name: '打开导航菜单', exact: true}).click();
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === '关于 CBOS');
+  assert.equal(await page.locator('main.main').evaluate(element => element.inert), true);
+  await page.getByRole('button', {name: '关闭菜单', exact: true}).focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'CBOS 工作台');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), '关闭菜单');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), '打开导航菜单');
+  assert.equal(await page.locator('main.main').evaluate(element => element.inert), false);
+  await page.setViewportSize(desktopViewport);
+  assert.equal(await page.locator('nav a[href="/coals"]').innerText(), '煤质数据库');
+  await page.locator('nav a[href="/coals"]').click();
+  await page.getByText('需要练习数据？下载六煤测试表', {exact: true}).click();
+  await saveDownload(page.getByRole('button', {name: '下载测试表 XLSX', exact: true}), '六煤测试数据.xlsx');
+  await page.getByRole('button', {name: '文件 / 粘贴导入', exact: true}).click();
+  await page.locator('input[type="file"]').setInputFiles(path.join(output, '六煤测试数据.xlsx'));
+  await page.getByRole('button', {name: '解析并预览', exact: true}).click();
+  const sixImported = page.waitForResponse(r => r.url().endsWith('/api/catalog/import/commit'));
+  await page.getByRole('button', {name: '确认导入 6 份记录', exact: true}).click();
+  assert.equal((await (await sixImported).json()).data.created_revisions, 6);
+  const assays = (await api('/api/assays')).data;
+  assert.equal(assays.length, 6);
+  assert.deepEqual(assays.map(a => a.coal_type), ['无烟煤', '无烟煤', '无烟煤', '烟煤', '烟煤', '烟煤']);
+  assert.ok(assays.every(a => a.eligibility.blending.eligible && a.eligibility.theory.eligible));
+  await page.locator('nav a[href="/"]').click();
   await page.screenshot({path: path.join(output, 'desktop-overview.png')});
   await page.getByRole('button', {name: '切换到亮色主题'}).click();
   await page.locator('nav a[href="/settings"]').click();
@@ -102,9 +130,6 @@ async function saveDownload(button, filename) {
   const storageKey = `cbos_blending_v2_user_${session.user.id}`;
   await page.evaluate(({key, cfg}) => localStorage.setItem(key, JSON.stringify(cfg)), {key: storageKey, cfg});
   await page.locator('nav a[href="/blending"]').click();
-  const old = page.locator('.coal-pick').filter({has: page.getByText(legacy[0].label, {exact: true})});
-  await old.waitFor();
-  assert.equal(await old.locator('input').isDisabled(), true);
   for (const assay of assays) await page.locator('.coal-pick').filter({has: page.getByText(assay.label, {exact: true})}).click();
   const solve = page.waitForResponse(r => r.url().endsWith('/api/optimization') && r.request().method() === 'POST', {timeout: 120000});
   await page.getByRole('button', {name: '开始优化求解'}).click();
@@ -152,6 +177,17 @@ async function saveDownload(button, filename) {
   const ratio = await (await theory).json();
   assert.ok(Number.isFinite(ratio.ratio) && ratio.ratio > 0, JSON.stringify(ratio));
   assert.equal(ratio.input_snapshot.schema_version, 2);
+  await page.getByRole('button', {name: '实际置换比', exact: true}).click();
+  await page.getByLabel('煤、焦炭耗量的共同质量基准', {exact: true}).selectOption('d');
+  for (const [label, value] of Object.entries({'高炉编号': 'SMOKE-BF', '调整前统计期间': 'before',
+    '调整后统计期间': 'after', '调整前焦比': 400, '调整后焦比': 370, '调整前煤比': 150, '调整后煤比': 180})) {
+    await page.getByLabel(label, {exact: true}).fill(String(value));
+  }
+  const actualResponse = page.waitForResponse(r => r.url().endsWith('/api/calculate_actual_ratio'));
+  await page.getByRole('button', {name: '开始计算', exact: true}).click();
+  const actualRatio = await (await actualResponse).json();
+  assert.equal(actualRatio.ratio, 1);
+  assert.equal(actualRatio.input_snapshot.schema_version, 2);
   const historyCount = (await api('/api/optimization/history')).data.length;
   assert.ok(historyCount > 0);
   await application.close(); application = null;
@@ -168,9 +204,9 @@ async function saveDownload(button, filename) {
     version: build.version, build_commit: build.build_commit,
     platform: process.platform, arch: process.arch, packaged: Boolean(process.env.CBOS_ELECTRON_EXECUTABLE),
     six_coal_result: result.result.recommended_solution, ratio: ratio.ratio,
-    checks: ['first admin UI', 'restart login', 'private session', 'legacy unknown disabled', '3 anthracite + 3 bituminous UI solve',
+    checks: ['first admin UI', 'restart login', 'private session', 'fresh database empty', 'Help semantic headings/tables/lists', 'About without changelog', 'responsive navigation focus/trap/Escape', 'downloaded six-coal XLSX UI import', '3 anthracite + 3 bituminous UI solve',
       'immutable input snapshot', 'Excel blob export', 'XLSX template download', 'clipboard text',
-      'Chinese CSV multipart preview/commit', 'assay-backed replacement ratio', 'history after restart',
+      'Chinese CSV multipart preview/commit', 'assay-backed replacement ratio', 'actual replacement ratio', 'history after restart',
       'theme/draft/settings after restart', 'renderer isolation'], renderer_errors: errors}, null, 2));
   console.log(JSON.stringify({passed: true, output}));
 })().catch(async error => {

@@ -275,7 +275,7 @@ function BlendingWorkspace({settings}: {settings: Settings}) {
                   <div className="cwin__unit">{heatUnit}</div>
                 </div>
                 <div className="row gap-10 wrap">
-                  <div className="minmax grow" style={{ minWidth: 200 }}>
+                  <div className="minmax grow">
                     <input className="input" type="number" aria-label="热值下限" step="any" value={+heatDisplay(cfg.constraints.heat_min, heatUnit).toFixed(4)} onChange={(e) => patchConstraint('heat_min', heatCanonical(+e.target.value, heatUnit))} />
                     <span className="minmax__sep">–</span>
                     <input className="input" type="number" aria-label="热值上限" step="any" value={+heatDisplay(cfg.constraints.heat_max, heatUnit).toFixed(4)} onChange={(e) => patchConstraint('heat_max', heatCanonical(+e.target.value, heatUnit))} />
@@ -335,9 +335,9 @@ function BlendingWorkspace({settings}: {settings: Settings}) {
                           <div className="text-xs text-mute">{c.type} · ¥{fixed(c.price, 0)} · {fixed(heatDisplay(c.calorific_value, heatUnit), 2)} {heatUnit}</div>
                         </div>
                         <div className="minmax">
-                          <input className="input" type="number" min={0} max={100} value={b.min} onChange={(e) => setBound(c.id, 'min', +e.target.value)} />
+                          <input className="input" type="number" aria-label={`${c.name} 配比下限`} min={0} max={100} value={b.min} onChange={(e) => setBound(c.id, 'min', +e.target.value)} />
                           <span className="minmax__sep">–</span>
-                          <input className="input" type="number" min={0} max={100} value={b.max} onChange={(e) => setBound(c.id, 'max', +e.target.value)} />
+                          <input className="input" type="number" aria-label={`${c.name} 配比上限`} min={0} max={100} value={b.max} onChange={(e) => setBound(c.id, 'max', +e.target.value)} />
                         </div>
                       </div>
                     );
@@ -580,9 +580,9 @@ function GlobalBound({ onApply }: { onApply: (min: number, max: number) => void 
     <div className="row gap-10 wrap items-end" style={{ padding: '10px 12px', background: 'var(--surface-inset)', borderRadius: 'var(--r)', border: '1px solid var(--line)' }}>
       <span className="text-xs text-mute">批量设置 (%)</span>
       <div className="minmax" style={{ width: 170 }}>
-        <input className="input" type="number" min={0} max={100} value={min} onChange={(e) => setMin(+e.target.value)} />
+        <input className="input" type="number" aria-label="批量配比下限" min={0} max={100} value={min} onChange={(e) => setMin(+e.target.value)} />
         <span className="minmax__sep">–</span>
-        <input className="input" type="number" min={0} max={100} value={max} onChange={(e) => setMax(+e.target.value)} />
+        <input className="input" type="number" aria-label="批量配比上限" min={0} max={100} value={max} onChange={(e) => setMax(+e.target.value)} />
       </div>
       <button className="btn btn--sm btn--ghost" onClick={() => onApply(min, max)}>
         <Icon name="refresh" size={14} /> 应用到全部

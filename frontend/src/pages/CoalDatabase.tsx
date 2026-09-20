@@ -9,6 +9,7 @@ import { useToast } from '../components/ui/Toast';
 import { AssayView } from '../components/catalog/AssayView';
 import { AssayEditor } from '../components/catalog/AssayEditor';
 import { ImportDialog } from '../components/catalog/ImportDialog';
+import { TestDataDownloads } from '../components/catalog/TestDataDownloads';
 import '../components/catalog/catalog.css';
 
 interface Batch { id: number; coal_id: number; code: string; supplier: string | null; received_at: string | null; archived: boolean; revision_count: number; latest_assay: Assay | null }
@@ -50,10 +51,11 @@ export default function CoalDatabase() {
       {can('export') && <><button className="btn btn--ghost" disabled={busy} onClick={() => void exportData(true)}>下载导入模板</button><button className="btn" disabled={busy} onClick={() => void exportData()}>导出全部原始记录</button><button className="btn btn--ghost" disabled={busy} onClick={() => void exportData(false, 'csv')}>CSV</button></>}
       {can('data_write') && <><button className="btn" onClick={() => setEditor({kind: 'import'})}>文件 / 粘贴导入</button><button className="btn btn--primary" onClick={() => setEditor({kind: 'coal'})}>新增煤种</button></>}
     </div></div>
+    <details className="panel catalog-test-panel"><summary>需要练习数据？下载六煤测试表</summary><TestDataDownloads /></details>
     <div className="catalog-toolbar"><label>查找煤种<input type="search" placeholder="名称、类型或供应商" value={search} onChange={event => setSearch(event.target.value)} /></label><label className="catalog-check"><input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />显示已归档</label><span className="text-mute">{coals.length} 种煤</span></div>
     {query.isLoading && <p role="status">正在读取煤种与批次…</p>}
     {query.error && <div role="alert" className="catalog-error">{(query.error as Error).message} <button className="btn" onClick={() => void query.refetch()}>重试</button></div>}
-    {!query.isLoading && !query.error && !coals.length && <section className="panel catalog-empty"><h2>尚无匹配的煤种</h2><p>{search ? '试试其他名称，或清空搜索。' : can('data_write') ? '先新增煤种与批次，或使用模板导入化验报告。' : '数据维护员录入后，可在此查看原始记录。'}</p></section>}
+    {!query.isLoading && !query.error && !coals.length && <section className="panel catalog-empty"><h2>{search ? '尚无匹配的煤种' : '煤库是空的'}</h2><p>{search ? '试试其他名称，或清空搜索。' : can('data_write') ? '新增煤种与批次，或用空模板录入真实化验。也可下载上方六煤测试表，预览确认后导入练习。' : '数据维护员录入后，可在此查看原始记录。'}</p></section>}
     {coal && <div className="catalog-layout"><aside className="panel catalog-master-list" aria-label="煤种列表"><h2>煤种主档</h2>{coals.map(item => <button key={item.id} className={`catalog-master ${item.id === coal.id ? 'is-selected' : ''}`} onClick={() => setCoalId(item.id)} aria-pressed={item.id === coal.id}><strong>{item.name}</strong><span>{item.type} · {item.batches.length} 个批次{item.archived ? ' · 已归档' : ''}</span></button>)}</aside>
       <section className="panel catalog-workspace"><header className="catalog-section-head"><div><h2>{coal.name}</h2><p className="text-mute">{coal.type} · {coal.supplier || '主档供应商未填写'}{coal.archived && ' · 已归档'}</p></div>{can('data_write') && <div className="catalog-actions"><button className="btn btn--ghost" onClick={() => setEditor({kind: 'coal', coal})}>编辑主档</button><button className="btn btn--ghost" disabled={busy} onClick={() => void archive(`/api/catalog/${coal.id}`, !coal.archived)}>{coal.archived ? '恢复煤种' : '归档煤种'}</button><button className="btn" disabled={coal.archived} onClick={() => setEditor({kind: 'batch', coal})}>新增批次</button></div>}</header>
         {!batches.length ? <div className="catalog-empty"><h3>还没有可用批次</h3><p>为一批到货创建批次，再录入多份化验记录。</p></div> : <>
