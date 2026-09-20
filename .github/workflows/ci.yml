@@ -79,27 +79,61 @@ jobs:
           python -m pip install -r requirements-dev.txt
           npm --prefix frontend ci
       - name: Python regressions
+        id: pytest
         run: python -m pytest -q --junitxml=outputs/ci/pytest.xml
       - name: Frontend regressions
+        id: frontend_tests
         run: node --test frontend/tests/*.test.mjs | tee outputs/ci/frontend.tap
       - name: Desktop-shell regressions
+        id: shell_tests
         run: node --test desktop/tests/*.test.cjs | tee outputs/ci/desktop-shell.tap
       - name: Frontend type check
+        id: typecheck
         run: npm --prefix frontend run typecheck
       - name: Build web and offline frontend
+        id: frontend_build
         env:
           VITE_USE_MOCK: 'false'
         run: |
           npm --prefix frontend run build
           npm --prefix frontend run build -- --mode desktop
-      - name: Upload native regression evidence
+      - name: Record regression evidence in Actions logs and summary
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: macos-ci-${{ env.EXPECTED_SHA }}-${{ github.run_attempt }}
-          path: ci/${{ github.run_id }}-${{ github.run_attempt }}/outputs/ci/
-          if-no-files-found: warn
-          retention-days: 14
+        env:
+          CHECK_RESULTS: >-
+            {"python":"${{ steps.pytest.outcome }}",
+             "frontend":"${{ steps.frontend_tests.outcome }}",
+             "desktop_shell":"${{ steps.shell_tests.outcome }}",
+             "typecheck":"${{ steps.typecheck.outcome }}",
+             "web_and_offline_build":"${{ steps.frontend_build.outcome }}"}
+        run: |
+          python - <<'PY'
+          import json, os, re, xml.etree.ElementTree as ET
+          from pathlib import Path
+          report_dir = Path('outputs/ci')
+          identity = report_dir / 'identity.json'
+          evidence = {'identity': json.loads(identity.read_text()) if identity.exists() else None,
+                      'checks': json.loads(os.environ['CHECK_RESULTS']), 'test_reports': {}}
+          junit = report_dir / 'pytest.xml'
+          if junit.exists():
+              suites = list(ET.parse(junit).getroot().iter('testsuite'))
+              evidence['test_reports']['python'] = {
+                  key: sum(int(suite.get(key, '0')) for suite in suites)
+                  for key in ('tests', 'failures', 'errors', 'skipped')}
+          else:
+              evidence['test_reports']['python'] = None
+          for name in ('frontend', 'desktop-shell'):
+              tap = report_dir / f'{name}.tap'
+              evidence['test_reports'][name] = {
+                  key: int(value) for key, value in
+                  re.findall(r'^# (tests|pass|fail|cancelled|skipped|todo) (\d+)\s*$', tap.read_text(), re.M)
+              } if tap.exists() else None
+          print('CI_VALIDATION_JSON=' + json.dumps(evidence, ensure_ascii=False))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('\n## Regression evidence\n\n')
+              summary.write('Missing reports are null; check outcomes and the job conclusion determine success.\n\n')
+              summary.write('```json\n' + json.dumps(evidence, indent=2) + '\n```\n')
+          PY
       - name: Clean this run's checkout and dependencies
         if: always()
         working-directory: ${{ github.workspace }}

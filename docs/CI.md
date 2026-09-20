@@ -20,14 +20,14 @@ PR 检查显式 checkout 当前 PR 的完整 head SHA；各平台使用同一份
 
 自托管运行器与本机用户共用权限，并非安全沙箱。维护者仍须确保同仓库分支和工作流修改可信。作业不执行 `sudo`、全局 Python 安装、Docker 清理或主机服务重启。
 
-每次运行使用 `ci/<run-id>-<attempt>` checkout，Python 虚拟环境、npm 依赖及生成文件均位于该目录。结果上传后通过 `always()` 清理该次目录；同 PR 的旧 Mac 作业可被新提交取消。工具缓存由 Actions 管理。若进程强制退出或主机断电导致清理未执行，维护者应在确认没有活动作业后，仅清除该次遗留目录。
+每次运行使用 `ci/<run-id>-<attempt>` checkout，Python 虚拟环境、npm 依赖及生成文件均位于该目录。结果记录后通过 `always()` 清理该次目录；同 PR 的旧 Mac 作业可被新提交取消。工具缓存由 Actions 管理。若进程强制退出或主机断电导致清理未执行，维护者应在确认没有活动作业后，仅清除该次遗留目录。
 
 主机由两个仓库的 Runner 共用；作业要求启动时至少有 3 GiB 可用空间，还需保持代理和用户服务在线。服务安装、代理与启动方式由本机运维文档 `/Users/kevin/CodeWorkSpace/Ops/github-actions-runner.md` 管理，不向仓库复制私有环境文件或凭据。
 
 ## 结果核对与重试
 
 1. 在 PR Checks 打开具体 Actions 作业，核对 checkout SHA 与最新 PR head 相同。
-2. Mac 的 Job summary 与 `macos-ci-<sha>-<attempt>` 产物包含实际 Runner 名称、系统/架构、版本、Python/Node 版本、run ID，以及 pytest XML / 前端和 shell TAP 结果。身份文件本身不代表测试通过，须同时核对各步骤及最终结论。
+2. Mac 的 Job Summary 与日志中的 `CI_VALIDATION_JSON` 包含实际 Runner 名称、系统/架构、版本、Python/Node 版本、run ID，以及从 pytest XML / 前端和 shell TAP 提取的测试统计和各步骤实际 outcome。报告未生成时显示 `null`，不会记为通过；须同时核对各步骤及最终结论。完整测试输出仍在 Actions 日志，可下载保存。Mac 这份额外报告不依赖 Artifact 存储配额；Linux/Windows 原有构建资产及验收产物仍须上传成功。
 3. `Build web and offline frontend` 两次构建均须成功。它们验证共享界面编译；Windows 的冻结、安装和界面操作仍由 Windows 作业负责。
 4. 若 GitHub 注明 `The job was not started because an Actions budget is preventing further use.`，说明托管作业未启动；恢复 Actions 预算后重跑失败作业，无需改变代码或跳过门禁。
 5. 源码变化后推送新提交，重新执行新 SHA 的全部检查。保留失败日志定位根因，不能用旧 SHA 的成功记录替代。
