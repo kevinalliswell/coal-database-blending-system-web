@@ -32,4 +32,4 @@ Windows 使用 Electron 沙箱渲染进程，主进程代理 `cbos://app` 到随
 
 版本真源为 `app/__version__.py`；桌面和前端清单在版本准备阶段同步。构建提交写入构建信息，前端关于页通过系统信息 API 读取。帮助内容直接从 docs/USER_GUIDE.md 打包，更新记录直接从 CHANGELOG.md 打包。
 
-Release 仅手动指定完整 SHA 与版本触发，在同一工作流中编排 Linux、Docker 和 Windows 验收。构建期间不修改版本或提交；公开前核对附注标签、资产校验和与镜像 digest。普通 PR 构建不能取消发布构建。
+Release 仅手动指定完整 SHA 与版本触发，在同一工作流中编排 Linux、Docker 和 Windows 验收。构建期间不修改版本或提交；正式发布前核对附注标签、资产校验和与镜像 digest。普通 PR 构建不能取消发布构建。
