@@ -11,6 +11,8 @@
 - GitHub Actions 需要在发布 job 中拥有 `contents: write`、`packages: write`。构建 job 只有读取权限。
 - 对应 GHCR 包必须允许公开拉取。工作流会在公开 Release 前匿名核验固定版本镜像；它不会自动改变包的可见性。
 
+版本准备 PR 先修改唯一来源 `app/__version__.py`，再执行 `python desktop/scripts/build-backend.py --sync-version-only`，生成前端和桌面的 package/lock 版本，并将 CHANGELOG 的未发布内容定版。正常构建与正式发布不执行这个同步选项，也不会新增版本提交。
+
 准备好并合入 main 后，可从 Actions 页面填写两个输入。等价命令如下，其中 SHA 必须替换为真实的已合并提交：
 
 ```bash
