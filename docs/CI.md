@@ -8,7 +8,7 @@ PR 检查显式 checkout 当前 PR 的完整 head SHA；各平台使用同一份
 | --- | --- | --- |
 | CI / macOS ARM64 regression | `kevin-mac-coal`，macOS ARM64 自托管 | 完整 Python 回归、前端回归、桌面 shell 回归、显式 TypeScript 检查、Web 与桌面模式前端构建、版本清单核对 |
 | CI / test | GitHub 托管 Ubuntu，Python 3.11 / Node 22 | 原有全部回归与前端构建，以及真实 Dockerfile 的 Linux amd64 镜像构建、新库与旧库 HTTP 验收 |
-| Windows build / Windows Server 2019 noninteractive build | `ustb-win-coal`，低权限自托管服务 | 完整回归、类型检查、Web/离线前端、冻结后端 HTTP 及临时数据库重启、NSIS/ZIP 编译与散列；不运行安装包或 GUI |
+| Windows build / Windows Server 2019 noninteractive build | `ustb-win-coal`，低权限自托管服务 | 完整回归、类型检查、Web/离线前端、冻结后端 HTTP 及临时数据库重启、NSIS/ZIP 编译与散列；不执行产品安装或 GUI |
 | Windows desktop / windows-x64 | GitHub 托管 Windows 2022，Python 3.11 / Node 22 | 原有全部回归、冻结后端、安装包与 ZIP 构建、NSIS 安装、已安装程序 Electron 操作、重启、卸载与用户数据保留 |
 
 四项检查独立执行。Mac 成功或 Windows 构建成功不能替代 Linux 镜像或 Windows 安装验证；托管预算不足、下载失败或排队都不算通过。发布工作流和原平台验收要求保持不变。
@@ -35,9 +35,9 @@ PR 检查显式 checkout 当前 PR 的完整 head SHA；各平台使用同一份
 
 慢速网络还可使用 `dependency-cache.py` 固定散列的可选 CPython 3.11 Windows wheelhouse 和官方 Electron 44.4.0 x64 ZIP。wheelhouse 的 41 个 wheel 均核对官方 PyPI 文件散列，清单包含三份 requirements 的散列；按统一 LF 换行比较后完全一致才启用离线查找，随后仍由原始 pip install 检查并安装全部依赖。requirements 变化时回到常规解析，缓存缺失时正常下载，缓存散列错误则失败。Electron 归档既校验官方散列，也由 npm 安装脚本验证；打包使用同一份官方 ZIP，流程、功能测试及产物类型不变。`electron_config_cache` 和其他构建缓存均指向本次目录。
 
-MinGit、CPython、venv、pip/npm/Electron/PyInstaller 缓存、临时数据库和产物位于本次任务的独立目录；仅通过 Actions 的任务 PATH/环境文件提供工具，不写系统 PATH、注册表、全局 Python 或业务目录。仅删除本次任务的 checkout 与临时目录；不清理其他 Runner、业务服务或共享数据。原生命令退出码会使步骤失败。
+MinGit、CPython、venv、pip/npm/Electron/PyInstaller 缓存、临时数据库和产物位于本次任务的独立目录；仅通过 Actions 的任务 PATH/环境文件提供工具，不写系统 PATH、注册表、全局 Python 或业务目录。仅删除本次任务的 checkout 与临时目录；不清理其他 Runner、业务服务或共享数据。清理使用系统 cmd 的扩展路径支持处理超过 260 字符的文件名，无需修改长路径注册表设置；两处目录分别尝试清理，任何失败均使作业失败。原生命令退出码会使步骤失败。
 
-冻结后端通过随机 loopback 端口及临时数据目录测试六煤计算、导入导出、登录和重启；额外核对程序内置版本/SHA 与 checkout 一致。打包只执行 `dist:win --publish never`，不启动生成的安装器。Actions 日志和 Summary 中的 `CI_WINDOWS_BUILD_JSON` 记录服务身份、完整 SHA、步骤状态、pytest 统计、后端报告及 EXE/ZIP SHA-256。构建产物随后清理，不作为发行下载；正式流程仍重新构建并上传验收后的资产。
+冻结后端通过随机 loopback 端口及临时数据目录测试六煤计算、导入导出、登录和重启；额外核对程序内置版本/SHA 与 checkout 一致。打包执行 `dist:win --publish never`。electron-builder 编译时会执行仅生成卸载器文件的 NSIS 构建 stub，不执行正式产品安装、升级、卸载或 GUI；构建工具可产生系统临时文件。Actions 日志和 Summary 中的 `CI_WINDOWS_BUILD_JSON` 记录服务身份、完整 SHA、步骤状态、pytest 统计、后端报告及 EXE/ZIP SHA-256。构建产物随后清理，不作为发行下载；正式流程仍重新构建并上传验收后的资产。
 
 安装、覆盖升级、卸载和 Electron GUI 必须使用独立非业务测试账号及可丢弃的环境。当前完整 Windows 工作流明确要求 `RUNNER_ENVIRONMENT=github-hosted`；不得伪造环境变量或直接改为业务服务器 Runner。新增构建任务不生成 `windows-validation.json`，并始终标记 `full_windows_acceptance: false`。升级和 GUI 验收未执行时必须单独报告，不能以 Runner 在线、基础 smoke 或构建通过替代。
 

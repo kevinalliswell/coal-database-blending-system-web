@@ -125,7 +125,7 @@ jobs:
       - name: Frozen backend HTTP calculations and isolated database restart
         id: backend_smoke
         run: python desktop/scripts/smoke-backend.py --executable desktop/backend-dist/cbos-backend/cbos-backend.exe --output outputs/ci/backend
-      - name: Build NSIS and ZIP without executing the installer
+      - name: Build NSIS and ZIP without a product installation
         id: package
         run: |
           if ($env:CBOS_ELECTRON_ZIP) {
@@ -151,5 +151,18 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $source = Join-Path $env:GITHUB_WORKSPACE $env:RUN_DIRECTORY
-          if (Test-Path -LiteralPath $source) { Remove-Item -LiteralPath $source -Recurse -Force }
-          if ($env:CI_TASK_ROOT -and (Test-Path -LiteralPath $env:CI_TASK_ROOT)) { Remove-Item -LiteralPath $env:CI_TASK_ROOT -Recurse -Force }
+          $tools = Join-Path $env:RUNNER_TEMP ('cbos-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $failures = @()
+          foreach ($target in @($source, $tools)) {
+            try {
+              if (Test-Path -LiteralPath $target) {
+                # PowerShell 5.1 Remove-Item fails on deep packaged Python paths.
+                # System cmd supports the extended path without registry changes.
+                $extended = '\\?\' + [IO.Path]::GetFullPath($target)
+                & $env:ComSpec /d /c "rmdir /s /q `"$extended`""
+                if ($LASTEXITCODE -ne 0) { throw "Cleanup command failed: $target" }
+                if (Test-Path -LiteralPath $target) { throw "Cleanup left a directory: $target" }
+              }
+            } catch { $failures += $_.Exception.Message }
+          }
+          if ($failures.Count) { throw ($failures -join '; ') }
