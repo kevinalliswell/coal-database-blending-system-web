@@ -1,5 +1,6 @@
 """Release acceptance must reject missing stages, wrong builds and changed data."""
 import importlib.util
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -46,10 +47,11 @@ def reports(tmp_path):
               'restart_login': True, 'fixture_preserved': True, 'history_export': True, 'renderer_errors': []})
     data = tmp_path / 'data'; data.mkdir()
     (data / '.app-secret').write_text('fixture-private-secret')
-    with sqlite3.connect(data / 'coal_system.db') as connection:
-        for table in ('app_user', 'coal_data', 'coal_batches', 'assay_revisions', 'optimization_history', 'system_settings'):
-            connection.execute(f'CREATE TABLE {table}(id INTEGER PRIMARY KEY, value TEXT)')
-            connection.execute(f'INSERT INTO {table} VALUES(1, ?)', ('retained business value',))
+    with closing(sqlite3.connect(data / 'coal_system.db')) as connection:
+        with connection:
+            for table in ('app_user', 'coal_data', 'coal_batches', 'assay_revisions', 'optimization_history', 'system_settings'):
+                connection.execute(f'CREATE TABLE {table}(id INTEGER PRIMARY KEY, value TEXT)')
+                connection.execute(f'INSERT INTO {table} VALUES(1, ?)', ('retained business value',))
     snapshot = lifecycle.data_checks.snapshot_data(data)
     for name, compare in [('fresh-uninstall-data', lifecycle.data_checks.compare_uninstall),
                           ('upgrade-data', lifecycle.data_checks.compare_upgrade),

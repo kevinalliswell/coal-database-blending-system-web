@@ -1,4 +1,5 @@
 """Lifecycle evidence must detect changed values, not merely unchanged counts."""
+from contextlib import closing
 import importlib.util
 import json
 from pathlib import Path
@@ -18,7 +19,8 @@ def data_dir(tmp_path):
     directory = tmp_path / '用户资料 100% #1'
     directory.mkdir()
     (directory / '.app-secret').write_text('private-secret-never-print', encoding='utf-8')
-    with sqlite3.connect(directory / 'coal_system.db') as db:
+    # The SQLite context manager commits/rolls back; closing releases Windows locks.
+    with closing(sqlite3.connect(directory / 'coal_system.db')) as db, db:
         db.executescript('''
             PRAGMA foreign_keys=ON;
             CREATE TABLE app_user (id INTEGER PRIMARY KEY, password_hash TEXT NOT NULL);
@@ -37,7 +39,7 @@ def data_dir(tmp_path):
 
 
 def execute(data_dir, sql, parameters=()):
-    with sqlite3.connect(data_dir / 'coal_system.db') as db:
+    with closing(sqlite3.connect(data_dir / 'coal_system.db')) as db, db:
         db.execute(sql, parameters)
 
 
@@ -134,10 +136,10 @@ def test_foreign_key_violation_is_rejected(data_dir):
 
 def test_row_hash_is_order_independent_and_preserves_sqlite_value_types(data_dir):
     execute(data_dir, 'CREATE TABLE "odd "" name" (value)')
-    with sqlite3.connect(data_dir / 'coal_system.db') as db:
+    with closing(sqlite3.connect(data_dir / 'coal_system.db')) as db, db:
         db.executemany('INSERT INTO "odd "" name" VALUES (?)', [(None,), (1,), (1.25,), ('1',), (b'1',)])
     before = lifecycle.snapshot_data(data_dir)
-    with sqlite3.connect(data_dir / 'coal_system.db') as db:
+    with closing(sqlite3.connect(data_dir / 'coal_system.db')) as db, db:
         db.execute('DELETE FROM "odd "" name"')
         db.executemany('INSERT INTO "odd "" name" VALUES (?)', [(b'1',), ('1',), (1.25,), (1,), (None,)])
     after = lifecycle.snapshot_data(data_dir)
