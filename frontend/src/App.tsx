@@ -2,6 +2,8 @@ import { Suspense, lazy } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getHealth, USE_MOCK } from './lib/api';
+import { useSession, ROLE_LABELS } from './lib/session';
+import { getSettings } from './lib/v2';
 import { qk } from './lib/query';
 import { useTheme } from './lib/theme';
 import { Icon, type IconName } from './components/ui/Icon';
@@ -17,6 +19,11 @@ function ThemeToggle() {
   );
 }
 
+const UserAdmin = lazy(() => import('./pages/UserAdmin'));
+const SystemSettings = lazy(() => import('./pages/SystemSettings'));
+const Account = lazy(() => import('./pages/Account'));
+const Help = lazy(() => import('./pages/Help'));
+const About = lazy(() => import('./pages/About'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const CoalDatabase = lazy(() => import('./pages/CoalDatabase'));
 const SmartBlending = lazy(() => import('./pages/SmartBlending'));
@@ -29,6 +36,7 @@ interface NavItem {
   label: string;
   icon: IconName;
   title: string;
+  permission?: string;
 }
 const NAV: NavItem[] = [
   { to: '/', label: '总览', icon: 'home', title: '控制台总览' },
@@ -36,18 +44,24 @@ const NAV: NavItem[] = [
   { to: '/blending', label: '智能混煤', icon: 'beaker', title: '智能混煤优化' },
   { to: '/replacement', label: '置换比计算', icon: 'scale', title: '置换比计算' },
   { to: '/history/blending', label: '混煤历史', icon: 'history', title: '混煤优化历史' },
+  { to: '/users', label: '用户管理', icon: 'layers', title: '用户与权限', permission: 'admin' },
+  { to: '/settings', label: '系统设置', icon: 'settings', title: '系统设置', permission: 'admin' },
+  { to: '/help', label: '使用帮助', icon: 'info', title: '使用帮助' },
+  { to: '/about', label: '关于', icon: 'box', title: '关于 CBOS' },
+  { to: '/account', label: '我的账号', icon: 'eye', title: '我的账号' },
   { to: '/history/replacement', label: '置换比历史', icon: 'chart', title: '置换比计算历史' },
 ];
 
 function Rail() {
+  const { can } = useSession();
   return (
     <nav className="rail">
       <div className="rail__brand" title="煤粉数据库管理及配煤优化控制台">
         <img src="/furnace.svg" alt="煤粉数据库管理及配煤优化控制台" />
       </div>
       <div className="rail__nav">
-        {NAV.map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.to === '/'} className={({ isActive }) => `rail__link${isActive ? ' is-active' : ''}`}>
+        {NAV.filter(n => !n.permission || can(n.permission)).map((n) => (
+          <NavLink key={n.to} aria-label={n.label} to={n.to} end={n.to === '/'} className={({ isActive }) => `rail__link${isActive ? ' is-active' : ''}`}>
             <Icon name={n.icon} size={21} />
             <span className="tip">{n.label}</span>
           </NavLink>
@@ -59,6 +73,8 @@ function Rail() {
 
 function Topbar() {
   const loc = useLocation();
+  const { user, logout } = useSession();
+  const settings = useQuery({ queryKey: ['settings'], queryFn: getSettings });
   const active =
     NAV.filter((n) => (n.to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(n.to))).sort(
       (a, b) => b.to.length - a.to.length
@@ -68,7 +84,7 @@ function Topbar() {
   return (
     <header className="topbar">
       <div className="topbar__crumbs">
-        <span className="eyebrow">CBOS · 煤粉配煤控制台</span>
+        <span className="eyebrow">{settings.data?.system_name || 'CBOS · 煤粉配煤控制台'}</span>
         <Icon name="chevronRight" size={14} className="text-mute" />
         <span className="topbar__title">{active.title}</span>
       </div>
@@ -87,6 +103,8 @@ function Topbar() {
         ) : (
           <StatusPill tone="mute">检查中…</StatusPill>
         )}
+        <NavLink to="/account" className="session-name">{user.display_name || user.username} · {ROLE_LABELS[user.role]}</NavLink>
+        <button className="btn btn--ghost" onClick={() => void logout()}>退出</button>
         <ThemeToggle />
       </div>
     </header>
@@ -107,6 +125,7 @@ function PageFallback() {
 }
 
 export function App() {
+  const { can } = useSession();
   return (
     <div className="shell">
       <Rail />
@@ -115,6 +134,11 @@ export function App() {
         <div className="scroll-area">
           <Suspense fallback={<PageFallback />}>
             <Routes>
+              <Route path="/users" element={can('admin') ? <UserAdmin /> : <Help />} />
+              <Route path="/settings" element={can('admin') ? <SystemSettings /> : <Help />} />
+              <Route path="/account" element={<Account />} />
+              <Route path="/help" element={<Help />} />
+              <Route path="/about" element={<About />} />
               <Route path="/" element={<Dashboard />} />
               <Route path="/coals" element={<CoalDatabase />} />
               <Route path="/blending" element={<SmartBlending />} />

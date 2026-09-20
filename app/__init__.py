@@ -35,6 +35,8 @@ def create_app(config_name: str | None = None, config_overrides: dict | None = N
     from app import models  # noqa: F401
     from app.routes import register_blueprints, register_error_handlers
 
+    from app.routes.access import init_access
+    init_access(app)
     register_blueprints(app)
     register_error_handlers(app)
     _register_startup_hooks(app)
@@ -46,15 +48,15 @@ def _init_extensions(app: Flask) -> None:
     """初始化所有扩展。"""
     db.init_app(app)
     migrate.init_app(app, db)
-    if not app.config.get('DESKTOP_MODE'):
-        cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
 
 
 def _register_startup_hooks(app: Flask) -> None:
-    """注册轻量启动钩子，确保本地 SQLite 可直接使用。"""
+    """Database initialization is explicit and runs before serving requests."""
+    import click
+    from app.services.database_service import initialize_database
 
-    @app.before_request
-    def _ensure_sqlite_seeded() -> None:
-        from app.services.coal_data_service import ensure_coal_data_initialized
-
-        ensure_coal_data_initialized()
+    @app.cli.command('initialize')
+    def initialize_command():
+        """Back up and upgrade the database; initialize a fresh database once."""
+        initialize_database(app)
+        click.echo('数据库已初始化 / 升级。')

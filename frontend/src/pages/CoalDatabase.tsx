@@ -1,462 +1,94 @@
-import { useMemo, useRef, useState } from 'react';
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  batchDeleteCoals,
-  coalTypes,
-  createCoal,
-  deleteCoal,
-  downloadTemplate,
-  exportCoals,
-  listCoals,
-  updateCoal,
-  uploadCoals,
-} from '../lib/api';
-import type { Coal, CoalDraft } from '../lib/types';
-import { COAL_FIELDS } from '../lib/constants';
-import { Icon } from '../components/ui/Icon';
-import { EmptyState, SkeletonRows } from '../components/ui/bits';
-import { Drawer, Modal, ConfirmDialog } from '../components/ui/Overlay';
-import { CoalForm } from '../components/CoalForm';
+import { useEffect, useState, type FormEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiData, download } from '../lib/http';
+import { useSession } from '../lib/session';
+import type { Assay } from '../lib/v2';
+import { downloadBlob, stamp } from '../lib/format';
+import { Modal } from '../components/ui/Overlay';
 import { useToast } from '../components/ui/Toast';
-import { coalTemplateFilename, downloadBlob, fixed, num, stamp } from '../lib/format';
-import { useDebounced } from '../hooks/useDebounced';
+import { AssayView } from '../components/catalog/AssayView';
+import { AssayEditor } from '../components/catalog/AssayEditor';
+import { ImportDialog } from '../components/catalog/ImportDialog';
+import '../components/catalog/catalog.css';
+
+interface Batch { id: number; coal_id: number; code: string; supplier: string | null; received_at: string | null; archived: boolean; revision_count: number; latest_assay: Assay | null }
+interface CatalogCoal { id: number; name: string; type: string; supplier: string | null; archived: boolean; batches: Batch[] }
+type Editor = {kind: 'coal'; coal?: CatalogCoal} | {kind: 'batch'; coal: CatalogCoal} | {kind: 'assay'; batch: Batch; previous?: Assay} | {kind: 'import'};
 
 export default function CoalDatabase() {
-  const toast = useToast();
-  const qc = useQueryClient();
-
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [searchInput, setSearchInput] = useState('');
-  const search = useDebounced(searchInput, 250);
-  const [type, setType] = useState('');
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<Coal | null>(null);
-  const [detail, setDetail] = useState<Coal | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
-  const [confirm, setConfirm] = useState<null | { ids: number[]; label: string }>(null);
-
-  const query = useMemo(() => ({ page, page_size: pageSize, search, type }), [page, pageSize, search, type]);
-  const coals = useQuery({
-    queryKey: ['coals', query],
-    queryFn: () => listCoals(query),
-    placeholderData: keepPreviousData,
-  });
-  const types = useQuery({ queryKey: ['coalTypes'], queryFn: coalTypes });
-
-  const rows = coals.data?.data ?? [];
-  const pag = coals.data?.pagination;
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['coals'] });
-    qc.invalidateQueries({ queryKey: ['coalTypes'] });
-    qc.invalidateQueries({ queryKey: ['health'] });
-  };
-
-  const saveMut = useMutation({
-    mutationFn: (d: CoalDraft) => (editing ? updateCoal(editing.id, d) : createCoal(d)),
-    onSuccess: () => {
-      toast.success(editing ? '煤种已更新' : '煤种已添加');
-      setFormOpen(false);
-      setEditing(null);
-      invalidate();
-    },
-    onError: (e: Error) => toast.error('保存失败', e.message),
-  });
-
-  const delMut = useMutation({
-    mutationFn: (ids: number[]) => (ids.length === 1 ? deleteCoal(ids[0]).then(() => 1) : batchDeleteCoals(ids)),
-    onSuccess: (_n, ids) => {
-      toast.success(`已删除 ${ids.length} 条煤种`);
-      setSelected((s) => {
-        const next = new Set(s);
-        ids.forEach((i) => next.delete(i));
-        return next;
-      });
-      invalidate();
-    },
-    onError: (e: Error) => toast.error('删除失败', e.message),
-  });
-
-  const exportMut = useMutation({
-    mutationFn: (ids: number[] | null) => exportCoals(ids),
-    onSuccess: (blob) => {
-      const ext = blob.type.includes('csv') ? 'csv' : 'xlsx';
-      downloadBlob(blob, `煤种数据导出_${stamp()}.${ext}`);
-      toast.success('导出完成');
-    },
-    onError: (e: Error) => toast.error('导出失败', e.message),
-  });
-
-  const allOnPageSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
-  const someOnPageSelected = rows.some((r) => selected.has(r.id));
-
-  const toggleAllOnPage = () => {
-    setSelected((s) => {
-      const next = new Set(s);
-      if (allOnPageSelected) rows.forEach((r) => next.delete(r.id));
-      else rows.forEach((r) => next.add(r.id));
-      return next;
-    });
-  };
-  const toggleOne = (id: number) =>
-    setSelected((s) => {
-      const next = new Set(s);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-
-  return (
-    <div className="page">
-      <div className="page__head">
-        <div>
-          <h1 className="page__title">煤种数据库</h1>
-          <p className="page__lead">维护煤种的工业分析与元素分析指标，作为混煤优化的数据基础。</p>
-        </div>
-        <div className="page__actions">
-          <button className="btn btn--ghost" onClick={() => downloadTemplate().then((b) => downloadBlob(b, coalTemplateFilename(b)))}>
-            <Icon name="download" size={15} /> 导入模板
-          </button>
-          <button className="btn btn--ghost" onClick={() => setImportOpen(true)}>
-            <Icon name="upload" size={15} /> 批量导入
-          </button>
-          <button className="btn btn--ghost" onClick={() => exportMut.mutate(null)}>
-            <Icon name="download" size={15} /> 导出全部
-          </button>
-          <button
-            className="btn btn--primary"
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-          >
-            <Icon name="plus" size={15} /> 添加煤种
-          </button>
-        </div>
-      </div>
-
-      <div className="panel">
-        {/* toolbar */}
-        <div className="panel__body" style={{ paddingBottom: 0 }}>
-          <div className="row gap-12 wrap between">
-            <div className="row gap-10 wrap grow">
-              <div className="input-adorn" style={{ width: 260, maxWidth: '100%' }}>
-                <span className="tico"><Icon name="search" size={15} /></span>
-                <input
-                  className="input"
-                  placeholder="搜索名称 / 类型 / 供应商"
-                  value={searchInput}
-                  onChange={(e) => {
-                    setSearchInput(e.target.value);
-                    setPage(1);
-                  }}
-                />
-              </div>
-              <select
-                className="select"
-                style={{ width: 150 }}
-                value={type}
-                onChange={(e) => {
-                  setType(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">所有类型</option>
-                {(types.data ?? []).map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              <select className="select" style={{ width: 120 }} value={pageSize} onChange={(e) => { setPageSize(+e.target.value); setPage(1); }}>
-                {[10, 20, 50].map((n) => (
-                  <option key={n} value={n}>
-                    每页 {n} 条
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="row gap-10">
-              {selected.size > 0 && (
-                <>
-                  <span className="pill pill--ember">已选 {selected.size} 项</span>
-                  <button className="btn btn--sm btn--ghost" onClick={() => exportMut.mutate([...selected])}>
-                    <Icon name="download" size={14} /> 导出选中
-                  </button>
-                  <button className="btn btn--sm btn--danger btn--ghost" onClick={() => setConfirm({ ids: [...selected], label: `选中的 ${selected.size} 条` })}>
-                    <Icon name="trash" size={14} /> 删除选中
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* table */}
-        <div className="panel__body">
-          {coals.isLoading ? (
-            <SkeletonRows rows={pageSize > 10 ? 8 : 6} cols={7} />
-          ) : rows.length === 0 ? (
-            <EmptyState icon="database" title="没有匹配的煤种" sub="调整搜索或类型筛选，或添加新的煤种记录。" />
-          ) : (
-            <div className="tbl-wrap">
-              <table className="tbl" style={{ minWidth: 720 }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: 40 }}>
-                      <input
-                        type="checkbox"
-                        className={`check${!allOnPageSelected && someOnPageSelected ? ' check--indeterminate' : ''}`}
-                        checked={allOnPageSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = !allOnPageSelected && someOnPageSelected;
-                        }}
-                        onChange={toggleAllOnPage}
-                      />
-                    </th>
-                    <th>煤种信息</th>
-                    <th className="num">价格 <span className="text-xs text-mute">元/吨</span></th>
-                    <th className="num">热值 <span className="text-xs text-mute">kcal/kg</span></th>
-                    <th className="num">灰分 %</th>
-                    <th className="num">挥发分 %</th>
-                    <th className="num">全硫 %</th>
-                    <th style={{ width: 108 }}>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((c) => (
-                    <tr key={c.id} className={selected.has(c.id) ? 'is-selected' : ''}>
-                      <td>
-                        <input type="checkbox" className="check" checked={selected.has(c.id)} onChange={() => toggleOne(c.id)} />
-                      </td>
-                      <td style={{ minWidth: 210 }}>
-                        <div className="fw-500" style={{ lineHeight: 1.3 }}>{c.name}</div>
-                        <div className="row gap-8 items-center mt-4">
-                          <span className="tag tag--type">{c.type}</span>
-                          <span className="text-xs text-mute">{c.supplier || '—'} · #{c.id}</span>
-                        </div>
-                      </td>
-                      <td className="num text-ember">{fixed(c.price, 1)}</td>
-                      <td className="num">{num(c.calorific_value)}</td>
-                      <td className="num">{fixed(c.ash_content, 1)}</td>
-                      <td className="num">{fixed(c.volatile_matter, 1)}</td>
-                      <td className="num">{fixed(c.total_sulfur, 2)}</td>
-                      <td>
-                        <div className="row gap-4">
-                          <button className="btn btn-icon btn--ghost" title="详情" onClick={() => setDetail(c)}>
-                            <Icon name="eye" size={15} />
-                          </button>
-                          <button className="btn btn-icon btn--ghost" title="编辑" onClick={() => { setEditing(c); setFormOpen(true); }}>
-                            <Icon name="edit" size={15} />
-                          </button>
-                          <button className="btn btn-icon btn--ghost" title="删除" onClick={() => setConfirm({ ids: [c.id], label: c.name })}>
-                            <Icon name="trash" size={15} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* footer */}
-        {pag && rows.length > 0 && (
-          <div className="panel__head" style={{ borderTop: '1px solid var(--line)', borderBottom: 'none' }}>
-            <span className="text-sm text-mute mono">
-              第 {(pag.page - 1) * (pag.page_size || rows.length) + 1}–{(pag.page - 1) * (pag.page_size || rows.length) + rows.length} 条 / 共 {pag.total} 条
-            </span>
-            <Pager page={pag.page} totalPages={pag.total_pages} onPage={setPage} />
-          </div>
-        )}
-      </div>
-
-      {/* Add / Edit drawer */}
-      <Drawer
-        open={formOpen}
-        onClose={() => { setFormOpen(false); setEditing(null); }}
-        title={editing ? '编辑煤种' : '添加煤种'}
-        subtitle={editing ? editing.name : '录入新的煤种指标'}
-        icon={<Icon name={editing ? 'edit' : 'plus'} size={18} />}
-        wide
-        footer={
-          <>
-            <button className="btn btn--ghost" onClick={() => { setFormOpen(false); setEditing(null); }}>
-              取消
-            </button>
-            <button className="btn btn--primary" type="submit" form="coalForm" disabled={saveMut.isPending}>
-              {saveMut.isPending ? <span className="spinner" /> : <Icon name="save" size={15} />}
-              {editing ? '保存修改' : '添加煤种'}
-            </button>
-          </>
-        }
-      >
-        <CoalForm
-          key={editing?.id ?? 'new'}
-          coal={editing}
-          formId="coalForm"
-          submitting={saveMut.isPending}
-          onSubmit={(d) => saveMut.mutate(d)}
-          onCancel={() => { setFormOpen(false); setEditing(null); }}
-        />
-      </Drawer>
-
-      {/* Detail drawer */}
-      <Drawer
-        open={!!detail}
-        onClose={() => setDetail(null)}
-        title={detail?.name ?? ''}
-        subtitle={detail ? `${detail.type} · ${detail.supplier || '未标注产地'}` : ''}
-        icon={<Icon name="database" size={18} />}
-        footer={
-          <button className="btn btn--primary" onClick={() => { if (detail) { setEditing(detail); setDetail(null); setFormOpen(true); } }}>
-            <Icon name="edit" size={15} /> 编辑此煤种
-          </button>
-        }
-      >
-        {detail && (
-          <div>
-            {COAL_FIELDS.filter((f) => f.key !== 'name').map((f) => (
-              <div key={f.key} className="kv">
-                <span className="kv__k">{f.label}{f.unit ? ` (${f.unit})` : ''}</span>
-                <span className="kv__v">{formatVal(detail[f.key])}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Drawer>
-
-      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onDone={invalidate} />
-
-      <ConfirmDialog
-        open={!!confirm}
-        onClose={() => setConfirm(null)}
-        onConfirm={() => confirm && delMut.mutate(confirm.ids)}
-        title="删除煤种"
-        danger
-        confirmText="确认删除"
-        message={<>确定删除 <b className="text-ink">{confirm?.label}</b>？此操作不可撤销。</>}
-      />
-    </div>
-  );
+  const {can} = useSession(); const toast = useToast(); const cache = useQueryClient();
+  const [search, setSearch] = useState(''); const [showArchived, setShowArchived] = useState(false);
+  const [coalId, setCoalId] = useState<number | null>(null); const [batchId, setBatchId] = useState<number | null>(null);
+  const [revisionId, setRevisionId] = useState<number | null>(null); const [editor, setEditor] = useState<Editor | null>(null);
+  const [busy, setBusy] = useState(false);
+  const query = useQuery({queryKey: ['catalog', showArchived], queryFn: () => apiData<CatalogCoal[]>(`/api/catalog?include_archived=${showArchived}`)});
+  const coals = (query.data || []).filter(coal => `${coal.name} ${coal.type} ${coal.supplier || ''}`.toLowerCase().includes(search.toLowerCase()));
+  const coal = coals.find(item => item.id === coalId) || coals[0];
+  const batches = coal?.batches.filter(batch => showArchived || !batch.archived) || [];
+  const batch = batches.find(item => item.id === batchId) || batches[0];
+  const assays = useQuery({queryKey: ['catalog-assays', batch?.id], enabled: Boolean(batch), queryFn: () => apiData<Assay[]>(`/api/batches/${batch!.id}/assays`)});
+  const assay = assays.data?.find(item => item.id === revisionId) || assays.data?.[0];
+  useEffect(() => {setBatchId(null); setRevisionId(null);}, [coal?.id]);
+  useEffect(() => {setRevisionId(null);}, [batch?.id]);
+  function refresh() {
+    void cache.invalidateQueries({queryKey: ['catalog']}); void cache.invalidateQueries({queryKey: ['catalog-assays']});
+    void cache.invalidateQueries({queryKey: ['assays']}); void cache.invalidateQueries({queryKey: ['health']});
+  }
+  function saved() {setEditor(null); setRevisionId(null); refresh(); toast.success('记录已保存');}
+  async function archive(url: string, archived: boolean) {
+    setBusy(true);
+    try {await apiData(url, {method: 'PATCH', body: JSON.stringify({archived})}); refresh(); toast.success(archived ? '已归档，历史记录继续保留' : '已恢复');}
+    catch (error) {toast.error('操作失败', (error as Error).message);} finally {setBusy(false);}
+  }
+  async function exportData(template = false, format = 'xlsx') {
+    setBusy(true);
+    try {const blob = await download(`/api/catalog/${template ? 'template' : 'export'}?format=${format}&include_archived=true`); downloadBlob(blob, `${template ? 'CBOS化验导入模板' : `CBOS全部化验原值_${stamp()}`}.${format}`);}
+    catch (error) {toast.error('下载失败', (error as Error).message);} finally {setBusy(false);}
+  }
+  return <div className="page catalog-page">
+    <div className="page__head"><div><h1 className="page__title">煤种与批次化验</h1><p className="page__lead">保存报告原值，追溯每个批次与修订。缺项可以保存，计算时按所需字段判断资格。</p></div><div className="page__actions">
+      {can('export') && <><button className="btn btn--ghost" disabled={busy} onClick={() => void exportData(true)}>下载导入模板</button><button className="btn" disabled={busy} onClick={() => void exportData()}>导出全部原始记录</button><button className="btn btn--ghost" disabled={busy} onClick={() => void exportData(false, 'csv')}>CSV</button></>}
+      {can('data_write') && <><button className="btn" onClick={() => setEditor({kind: 'import'})}>文件 / 粘贴导入</button><button className="btn btn--primary" onClick={() => setEditor({kind: 'coal'})}>新增煤种</button></>}
+    </div></div>
+    <div className="catalog-toolbar"><label>查找煤种<input type="search" placeholder="名称、类型或供应商" value={search} onChange={event => setSearch(event.target.value)} /></label><label className="catalog-check"><input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />显示已归档</label><span className="text-mute">{coals.length} 种煤</span></div>
+    {query.isLoading && <p role="status">正在读取煤种与批次…</p>}
+    {query.error && <div role="alert" className="catalog-error">{(query.error as Error).message} <button className="btn" onClick={() => void query.refetch()}>重试</button></div>}
+    {!query.isLoading && !query.error && !coals.length && <section className="panel catalog-empty"><h2>尚无匹配的煤种</h2><p>{search ? '试试其他名称，或清空搜索。' : can('data_write') ? '先新增煤种与批次，或使用模板导入化验报告。' : '数据维护员录入后，可在此查看原始记录。'}</p></section>}
+    {coal && <div className="catalog-layout"><aside className="panel catalog-master-list" aria-label="煤种列表"><h2>煤种主档</h2>{coals.map(item => <button key={item.id} className={`catalog-master ${item.id === coal.id ? 'is-selected' : ''}`} onClick={() => setCoalId(item.id)} aria-pressed={item.id === coal.id}><strong>{item.name}</strong><span>{item.type} · {item.batches.length} 个批次{item.archived ? ' · 已归档' : ''}</span></button>)}</aside>
+      <section className="panel catalog-workspace"><header className="catalog-section-head"><div><h2>{coal.name}</h2><p className="text-mute">{coal.type} · {coal.supplier || '主档供应商未填写'}{coal.archived && ' · 已归档'}</p></div>{can('data_write') && <div className="catalog-actions"><button className="btn btn--ghost" onClick={() => setEditor({kind: 'coal', coal})}>编辑主档</button><button className="btn btn--ghost" disabled={busy} onClick={() => void archive(`/api/catalog/${coal.id}`, !coal.archived)}>{coal.archived ? '恢复煤种' : '归档煤种'}</button><button className="btn" disabled={coal.archived} onClick={() => setEditor({kind: 'batch', coal})}>新增批次</button></div>}</header>
+        {!batches.length ? <div className="catalog-empty"><h3>还没有可用批次</h3><p>为一批到货创建批次，再录入多份化验记录。</p></div> : <>
+          <nav className="catalog-batches" aria-label="批次选择">{batches.map(item => <button key={item.id} className={`catalog-batch ${item.id === batch?.id ? 'is-selected' : ''}`} aria-pressed={item.id === batch?.id} onClick={() => setBatchId(item.id)}><strong>{item.code}</strong><span>{item.received_at || '收货日期未记录'} · {item.revision_count} 份化验{item.archived && ' · 已归档'}</span></button>)}</nav>
+          {batch && <><div className="catalog-section-head"><div><h3>批次 {batch.code}</h3><p className="text-mute">供应商：{batch.supplier || '未填写'}</p></div>{can('data_write') && <div className="catalog-actions"><button className="btn btn--ghost" disabled={busy} onClick={() => void archive(`/api/batches/${batch.id}`, !batch.archived)}>{batch.archived ? '恢复批次' : '归档批次'}</button><button className="btn btn--primary" disabled={batch.archived || coal.archived} onClick={() => setEditor({kind: 'assay', batch})}>新增化验</button></div>}</div>
+            {assays.isLoading && <p role="status">正在读取修订记录…</p>}{assays.error && <p role="alert" className="catalog-error">{(assays.error as Error).message}</p>}
+            {assay ? <><div className="catalog-revisions"><label>查看化验修订<select value={assay.id} onChange={event => setRevisionId(Number(event.target.value))}>{assays.data?.map(item => <option value={item.id} key={item.id}>R{item.revision} · {item.report_number || '无报告编号'} · {item.sampled_at || '采样时间未记录'}</option>)}</select></label>{can('data_write') && <button className="btn" disabled={batch.archived || coal.archived} onClick={() => setEditor({kind: 'assay', batch, previous: assay})}>以此记录新增修订</button>}</div><AssayView assay={assay} /></> : !assays.isLoading && !assays.error && <p className="catalog-note">批次已保存，尚未录入化验。可先保存不完整记录，后续新增修订补全。</p>}
+          </>}
+        </>}
+      </section>
+    </div>}
+    {editor?.kind === 'import' && <ImportDialog onClose={() => setEditor(null)} onSaved={saved} />}
+    {editor?.kind === 'assay' && <AssayEditor batchId={editor.batch.id} previous={editor.previous} onClose={() => setEditor(null)} onSaved={saved} />}
+    {editor && (editor.kind === 'coal' || editor.kind === 'batch') && <MetadataEditor editor={editor} onClose={() => setEditor(null)} onSaved={saved} />}
+  </div>;
 }
 
-function formatVal(v: unknown): string {
-  if (v === null || v === undefined || v === '') return '—';
-  if (typeof v === 'number') return v.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
-  if (typeof v === 'string' && v.length > 19 && v.includes('T')) return v.replace('T', ' ').slice(0, 19);
-  return String(v);
-}
-
-function Pager({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (p: number) => void }) {
-  const pages: number[] = [];
-  const lo = Math.max(1, page - 2);
-  const hi = Math.min(totalPages, page + 2);
-  for (let i = lo; i <= hi; i++) pages.push(i);
-  return (
-    <div className="row gap-4">
-      <button className="btn btn--sm btn--ghost btn-icon" disabled={page <= 1} onClick={() => onPage(page - 1)}>
-        <Icon name="chevronLeft" size={15} />
-      </button>
-      {lo > 1 && (
-        <>
-          <button className="btn btn--sm btn--ghost" onClick={() => onPage(1)}>1</button>
-          {lo > 2 && <span className="text-mute px-4">…</span>}
-        </>
-      )}
-      {pages.map((p) => (
-        <button key={p} className={`btn btn--sm ${p === page ? 'btn--primary' : 'btn--ghost'}`} onClick={() => onPage(p)}>
-          {p}
-        </button>
-      ))}
-      {hi < totalPages && (
-        <>
-          {hi < totalPages - 1 && <span className="text-mute px-4">…</span>}
-          <button className="btn btn--sm btn--ghost" onClick={() => onPage(totalPages)}>{totalPages}</button>
-        </>
-      )}
-      <button className="btn btn--sm btn--ghost btn-icon" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>
-        <Icon name="chevronRight" size={15} />
-      </button>
-    </div>
-  );
-}
-
-function ImportModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
-  const toast = useToast();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const [result, setResult] = useState<{ created_count: number; updated_count: number; skipped_count: number; errors: string[] } | null>(null);
-
-  const mut = useMutation({
-    mutationFn: (f: File) => uploadCoals(f),
-    onSuccess: (r) => {
-      setResult(r);
-      toast.success('导入完成', r.message);
-      onDone();
-    },
-    onError: (e: Error) => toast.error('导入失败', e.message),
-  });
-
-  return (
-    <Modal
-      open={open}
-      onClose={() => { setFile(null); setResult(null); onClose(); }}
-      title="批量导入煤种"
-      subtitle="支持 CSV（演示模式）/ Excel（连接后端时）"
-      icon={<Icon name="upload" size={18} />}
-      footer={
-        <>
-          <button className="btn btn--ghost" onClick={() => { setFile(null); setResult(null); onClose(); }}>关闭</button>
-          <button className="btn btn--primary" disabled={!file || mut.isPending} onClick={() => file && mut.mutate(file)}>
-            {mut.isPending ? <span className="spinner" /> : <Icon name="upload" size={15} />} 开始导入
-          </button>
-        </>
-      }
-    >
-      <div
-        onClick={() => inputRef.current?.click()}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const f = e.dataTransfer.files[0];
-          if (f) setFile(f);
-        }}
-        style={{
-          border: '1.5px dashed var(--line-strong)',
-          borderRadius: 'var(--r-lg)',
-          padding: '32px 20px',
-          textAlign: 'center',
-          cursor: 'pointer',
-          background: 'var(--surface-inset)',
-        }}
-      >
-        <Icon name="upload" size={28} className="text-ember" />
-        <div className="fw-500 mt-8">{file ? file.name : '点击选择或拖拽文件到此处'}</div>
-        <div className="text-xs text-mute mt-4">列顺序需与导入模板一致</div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".csv,.xlsx,.xls"
-          style={{ display: 'none' }}
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-        />
-      </div>
-      {result && (
-        <div className="mt-16 col gap-8">
-          <div className="row gap-10">
-            <span className="pill pill--live">新增 {result.created_count}</span>
-            <span className="pill pill--cyan">更新 {result.updated_count}</span>
-            <span className="pill pill--mute">跳过 {result.skipped_count}</span>
-          </div>
-          {result.errors.length > 0 && (
-            <div className="raw text-danger">{result.errors.join('\n')}</div>
-          )}
-        </div>
-      )}
-    </Modal>
-  );
+function MetadataEditor({editor, onClose, onSaved}: {editor: Extract<Editor, {kind: 'coal' | 'batch'}>; onClose: () => void; onSaved: () => void}) {
+  const isBatch = editor.kind === 'batch'; const coal = editor.coal;
+  const [name, setName] = useState(isBatch ? '' : coal?.name || ''); const [type, setType] = useState(coal?.type || '');
+  const [supplier, setSupplier] = useState(isBatch ? '' : coal?.supplier || ''); const [received, setReceived] = useState('');
+  const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  async function submit(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError('');
+    try {
+      const url = isBatch ? `/api/catalog/${coal!.id}/batches` : coal ? `/api/catalog/${coal.id}` : '/api/catalog';
+      const body = isBatch ? {code: name, supplier: supplier || null, received_at: received || null} : {name, type, supplier: supplier || null};
+      await apiData(url, {method: !isBatch && coal ? 'PATCH' : 'POST', body: JSON.stringify(body)}); onSaved();
+    } catch (e) {setError((e as Error).message);} finally {setBusy(false);}
+  }
+  return <Modal open title={isBatch ? `新增批次 · ${coal!.name}` : coal ? '编辑煤种主档' : '新增煤种主档'} onClose={onClose}><form className="catalog-form" onSubmit={submit}>
+    <label>{isBatch ? '批次编号' : '煤种名称'}<input required autoFocus maxLength={100} value={name} onChange={event => setName(event.target.value)} /></label>
+    {!isBatch && <label>煤种类型<input required maxLength={50} list="catalog-coal-types" value={type} onChange={event => setType(event.target.value)} /><datalist id="catalog-coal-types"><option value="无烟煤" /><option value="烟煤" /></datalist></label>}
+    <label>供应商（可留空）<input maxLength={100} value={supplier} onChange={event => setSupplier(event.target.value)} /></label>
+    {isBatch && <label>收货日期（可留空）<input type="date" value={received} onChange={event => setReceived(event.target.value)} /></label>}
+    <p className="catalog-note">{isBatch ? '批次编号在同一煤种内唯一。各份化验报告保存为独立修订。' : '主档只描述煤种。原始指标在批次化验中录入。'}</p><p className="catalog-error" role="alert">{error}</p><button className="btn btn--primary" disabled={busy}>{busy ? '保存中…' : '保存'}</button>
+  </form></Modal>;
 }

@@ -1,0 +1,26 @@
+.login-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.login-page .v2-card { width: min(100%, 440px); }
+.v2-card { padding: 24px; margin-bottom: 20px; }
+.v2-form { display: grid; gap: 16px; }
+.v2-form label { display: grid; gap: 6px; font-size: 13px; }
+.v2-form input:not([type=checkbox]), .v2-form select, .v2-form textarea { width: 100%; padding: 9px 12px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); color: var(--ink); }
+.v2-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 16px; }
+.v2-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.v2-help { max-width: 940px; line-height: 1.8; }
+.v2-help pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.v2-help h2 { margin: 24px 0 12px; }
+.v2-help table { border-collapse: collapse; width: 100%; }
+.v2-help td, .v2-help th { padding: 8px; border: 1px solid var(--line-2); text-align: left; }
+.v2-message { white-space: pre-wrap; overflow-wrap: anywhere; }
+.v2-error { color: var(--danger); }
+.rail__nav { overflow-y: auto; }
+@media (max-width: 768px) { .topbar__meta .session-name { display: none; } .v2-card { padding: 16px; } }
+@media (max-width: 768px) {
+  .topbar { padding: 10px 12px; min-height: 56px; }
+  .topbar__crumbs { min-width: 0; overflow: hidden; }
+  .topbar__crumbs .eyebrow, .topbar__crumbs > svg { display: none; }
+  .topbar__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar__meta { flex-shrink: 0; gap: 6px; }
+  .topbar__meta .pill { display: none; }
+  .v2-grid { grid-template-columns: minmax(0, 1fr); }
+}

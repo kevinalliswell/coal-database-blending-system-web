@@ -3,6 +3,8 @@ import csv
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
+from access_helpers import authenticated_client
+from app.services.catalog_service import create_coal, create_batch, create_assay
 from app import create_app
 from app.extensions import db
 from app.models import OptimizationHistory, ReplacementRatioHistory
@@ -55,8 +57,20 @@ def app_client(tmp_path):
     with app.app_context():
         db.drop_all()
         db.create_all()
+        for row in CSV_ROWS:
+            coal = create_coal({'name': row[1], 'type': row[2]})
+            batch = create_batch(coal.id, {'code': '验收批次'})
+            raw = {key: {'value': value, 'unit': unit, 'basis': basis} for key, value, unit, basis in [
+                ('price',row[4],'CNY/t','ar'), ('calorific_value',row[5],'kcal/kg','ar'),
+                ('ash_content',row[6],'%','ar'), ('volatile_matter',row[7],'%','ar'),
+                ('total_sulfur',row[10],'%','ar'), ('total_moisture',8,'%','ar'),
+                ('carbon_content',78,'%','d'), ('hydrogen_content',3.5,'%','d'), ('sio2_content',48,'%','ash')]}
+            raw['calorific_value']['heat_type'] = 'net_v'
+            raw['hydrogen_content']['hydrogen_includes_moisture'] = False
+            create_assay(batch.id, {'raw': raw})
+        db.session.commit()
 
-    yield app, app.test_client()
+    yield app, authenticated_client(app)
 
     with app.app_context():
         db.session.remove()
@@ -66,10 +80,8 @@ def app_client(tmp_path):
 def build_optimization_payload():
     return {
         'optimization_target': '喷煤性价比最优',
-        # Legacy-shaped fixtures intentionally exercise screening history, not assay certification.
-        'calculation_mode': 'screening',
-        'ratio_basis': 'unknown',
-        'selected_coal_ids': [1, 2, 3],
+        'settings_version': 1,
+        'components': [{'assay_revision_id': i, 'min_ratio': 0, 'max_ratio': 100} for i in (1, 2, 3)],
         'constraints': {
             'heat_target': 6100,
             'heat_min': 5900,
@@ -107,45 +119,18 @@ def build_optimization_payload():
     }
 
 
-def build_theory_payload():
-    return {
-        'coal_params': {
-            'carbon_content': 0.78,
-            'hydrogen_content': 0.035,
-            'ash_content': 0.12,
-            'sio2_content': 0.48,
-            'decomposition_heat': 220.0,
-            'physical_heat': 450.0,
-        },
-        'coke_params': {
-            'carbon_content': 0.86,
-            'ash_content': 0.11,
-            'sio2_content': 0.52,
-        },
-        'blast_furnace_params': {
-            'eta_co': 0.4444,
-            'slag_basicity': 1.15,
-            'slag_enthalpy': 1800.0,
-            'wind_temperature': 1180.0,
-            'hot_blast_enthalpy': 1.5,
-        },
-    }
+def build_theory_payload(assay_id):
+    from test_replacement_v2 import theory_payload
+    return theory_payload(assay_id)
 
 
 def build_actual_payload(enable_advanced=False):
-    return {
-        'production_data': {
-            'initial_coke_ratio': 400.0,
-            'final_coke_ratio': 370.0,
-            'initial_coal_ratio': 150.0,
-            'final_coal_ratio': 180.0,
-            'adjustment_factor': 2.5,
-            'iron_output_change': 50.0,
-            'slag_ratio_change': -10.0,
-            'carbon_efficiency_change': 2.0,
-        },
-        'enable_advanced': enable_advanced,
-    }
+    from test_replacement_v2 import actual_payload
+    payload = actual_payload()
+    if enable_advanced:
+        payload.update(correction_mode='provided', correction_source='测试现场修正记录')
+        payload['production_data']['adjustment_factor'] = 2.5
+    return payload
 
 
 def test_optimization_history_is_persisted_and_queryable(app_client):
@@ -166,7 +151,7 @@ def test_optimization_history_is_persisted_and_queryable(app_client):
     assert history_response.status_code == 200
     assert history_payload['status'] == 'success'
     assert len(history_payload['data']) == 1
-    assert history_payload['data'][0]['coal_names'] == ['经济煤', '高热值煤', '高硫低价煤']
+    assert [label.split(' / ')[0] for label in history_payload['data'][0]['coal_names']] == ['经济煤', '高热值煤', '高硫低价煤']
 
     detail_id = history_payload['data'][0]['id']
     detail_response = client.get(f'/api/optimization/history/{detail_id}')
@@ -174,7 +159,7 @@ def test_optimization_history_is_persisted_and_queryable(app_client):
 
     assert detail_response.status_code == 200
     assert detail_payload['status'] == 'success'
-    assert detail_payload['data']['request_payload']['selected_coal_ids'] == [1, 2, 3]
+    assert [item['assay_revision_id'] for item in detail_payload['data']['request_payload']['components']] == [1, 2, 3]
     assert detail_payload['data']['result_payload']['status'] == 'success'
 
 
@@ -200,8 +185,17 @@ def test_optimization_result_is_returned_when_history_save_fails(app_client, mon
 
 def test_replacement_ratio_theory_history_is_persisted_and_queryable(app_client):
     app, client = app_client
-
-    response = client.post('/api/calculate_theory_ratio', json=build_theory_payload())
+    from app.models.catalog import AssayRevision, CoalBatch
+    from app.models import Coal
+    from test_assay_conversion import assay
+    with app.app_context():
+        coal = Coal(name='理论置换比历史用煤', type='无烟煤')
+        batch = CoalBatch(coal=coal, code='历史测试批次')
+        record = AssayRevision(batch=batch, revision=1, raw=assay())
+        db.session.add(record)
+        db.session.commit()
+        assay_id = record.id
+    response = client.post('/api/calculate_theory_ratio', json=build_theory_payload(assay_id))
     payload = response.get_json()
 
     assert response.status_code == 200
@@ -224,8 +218,13 @@ def test_replacement_ratio_theory_history_is_persisted_and_queryable(app_client)
     detail_payload = detail_response.get_json()
 
     assert detail_response.status_code == 200
-    assert detail_payload['data']['request_payload']['coal_params']['carbon_content'] == 0.78
+    assert detail_payload['data']['request_payload'] == build_theory_payload(assay_id)
     assert detail_payload['data']['result_payload']['status'] == 'success'
+    snapshot = detail_payload['data']['result_payload']['input_snapshot']
+    assert snapshot['schema_version'] == 2
+    assert snapshot['assay']['id'] == assay_id
+    assert snapshot['raw']['carbon_content']['value'] == 78
+    assert snapshot['normalized']['coal_params']['carbon_content'] == .78
 
 
 def test_replacement_ratio_actual_history_tracks_basic_and_advanced_modes(app_client):

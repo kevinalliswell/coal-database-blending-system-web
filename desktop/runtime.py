@@ -1,7 +1,7 @@
 """Authenticated loopback service with writable user data and bundled resources."""
 from __future__ import annotations
 
-from contextlib import closing
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 import hmac
 import json
@@ -9,6 +9,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import secrets
 import sqlite3
 import sys
 import threading
@@ -35,73 +36,91 @@ class TokenMiddleware:
                                                 ('Content-Length', str(len(body))),
                                                 ('Cache-Control', 'no-store')])
             return [body]
+        environ['cbos.transport_authenticated'] = True
         return self.app(environ, start_response)
 
 
-def _database_state(database: Path):
-    if not database.exists() or database.stat().st_size == 0:
-        return True, None
-    with closing(sqlite3.connect(f'{database.as_uri()}?mode=ro', uri=True)) as connection:
-        tables = {row[0] for row in connection.execute(
-            "select name from sqlite_master where type='table' and name not like 'sqlite_%'")}
-        if not tables:
-            return True, None
-        if 'alembic_version' not in tables:
-            raise RuntimeError('现有数据库缺少迁移版本记录；请先核实 schema 并迁移，桌面版不会自动 stamp。')
-        versions = connection.execute('select version_num from alembic_version').fetchall()
-        if len(versions) != 1:
-            raise RuntimeError('现有数据库迁移版本无效；请先核实 schema，原数据未修改。')
-        return False, versions[0][0]
-
-
-def _online_backup(database: Path) -> Path:
-    directory = database.parent / 'backups'
-    directory.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-    backup = directory / f'coal_system-{timestamp}.db'
-    # SQLite's backup API includes committed WAL pages; copying the file does not.
-    with closing(sqlite3.connect(f'{database.as_uri()}?mode=ro', uri=True)) as source:
-        with closing(sqlite3.connect(backup)) as destination:
-            source.backup(destination)
-    return backup
-
-
-def _migrate_and_seed(app, resources: Path, database: Path):
-    from alembic import command
-    from alembic.config import Config as AlembicConfig
-    from alembic.script import ScriptDirectory
-    from app.extensions import db
-    from app.services.coal_data_service import seed_from_csv
-
-    migrations = resources / 'migrations'
-    config = AlembicConfig(str(migrations / 'alembic.ini'))
-    config.set_main_option('script_location', str(migrations).replace('%', '%%'))
-    # Dynamic Alembic imports must not create __pycache__ in the install folder.
-    previous_bytecode = sys.dont_write_bytecode
-    sys.dont_write_bytecode = True
+def persistent_app_secret(data_dir: Path) -> str:
+    """Application secret belongs to the data, not the per-launch transport."""
+    data_dir.mkdir(parents=True, exist_ok=True)
+    path = data_dir / '.app-secret'
     try:
-        scripts = ScriptDirectory.from_config(config)
-        head = scripts.get_current_head()
-        fresh, revision = _database_state(database)
-        if revision is not None:
-            if revision not in {item.revision for item in scripts.walk_revisions()}:
-                raise RuntimeError('数据库迁移版本不属于本应用，请使用匹配版本，原数据未修改。')
-            if revision != head:
-                backup = _online_backup(database)
-                logger.info('数据库升级前已备份至 %s', backup)
-        with app.app_context():
-            if fresh or revision != head:
-                # Reuse the escaped path; Flask-Migrate's wrapper rebuilds it
-                # without escaping '%' in valid installation directory names.
-                # env.py still reads the registered Flask-Migrate extension.
-                command.upgrade(config, 'head')
-            if fresh:
-                summary = seed_from_csv(resources / 'data' / 'test_coal_datas.csv')
-                if summary.skipped_count or not summary.created_count:
-                    raise RuntimeError('内置示例煤导入失败；请检查安装资源。')
-            db.session.remove()
-    finally:
-        sys.dont_write_bytecode = previous_bytecode
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        pass
+    else:
+        with os.fdopen(descriptor, 'w', encoding='ascii') as stream:
+            stream.write(secrets.token_hex(32))
+            stream.flush()
+            os.fsync(stream.fileno())
+    secret = path.read_text(encoding='ascii').strip()
+    if not re.fullmatch(r'[0-9a-f]{64}', secret):
+        raise RuntimeError('本机应用密钥文件损坏，请恢复数据备份；不会自动替换密钥。')
+    return secret
+
+
+from app.services.database_service import _database_state, _online_backup, _migrate_and_seed
+
+
+@contextmanager
+def exclusive_data_lock(data_dir: Path):
+    """OS lock is released on process exit, including crashes; no stale PID file."""
+    data_dir = Path(data_dir)
+    if not data_dir.is_absolute():
+        raise ValueError('数据目录必须为绝对路径')
+    data_dir.mkdir(parents=True, exist_ok=True)
+    with (data_dir / '.backend.lock').open('a+b') as stream:
+        stream.seek(0, os.SEEK_END)
+        if stream.tell() == 0:
+            stream.write(b'0'); stream.flush()
+        stream.seek(0)
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            raise RuntimeError('数据目录正在使用，请先完全关闭 CBOS，再执行账号恢复。') from error
+        try:
+            yield
+        finally:
+            stream.seek(0)
+            if os.name == 'nt':
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
+def reset_local_password(data_dir: Path, username: str, password: str):
+    """Local recovery only; caller holds the data lock and collects hidden input."""
+    data_dir = Path(data_dir)
+    database = data_dir / 'coal_system.db'
+    if not data_dir.is_absolute() or not database.is_file():
+        raise ValueError('恢复操作只允许指定包含现有 coal_system.db 的绝对数据目录')
+    with closing(sqlite3.connect(f'{database.as_uri()}?mode=ro', uri=True)) as connection:
+        exists = connection.execute("select name from sqlite_master where type='table' and name='app_user'").fetchone()
+        if not exists:
+            raise ValueError('现有数据库尚无用户表，请先使用匹配版本正常升级')
+    from app import create_app
+    from app.extensions import db
+    from app.models.access import User
+    from app.services.access_service import change_password
+    app = create_app('production', config_overrides={
+        'DESKTOP_MODE': True, 'DEBUG': False, 'TESTING': False,
+        'SECRET_KEY': persistent_app_secret(data_dir), 'DATA_STORAGE_MODE': 'sqlite',
+        'DATA_DIR': str(data_dir), 'UPLOAD_FOLDER': str(data_dir / 'uploads'),
+        'SQLALCHEMY_DATABASE_URI': f'sqlite:///{database.as_posix()}',
+    })
+    with app.app_context():
+        try:
+            user = db.session.query(User).filter_by(username=username.lower()).first()
+            if user is None:
+                raise ValueError('指定账号不存在；恢复命令不会创建账号')
+            change_password(user, password)
+        finally:
+            db.session.remove(); db.engine.dispose()
 
 
 def create_desktop_app(data_dir=None, token=None, resources=None):
@@ -125,7 +144,7 @@ def create_desktop_app(data_dir=None, token=None, resources=None):
     from app.extensions import db
     app = create_app('production', config_overrides={
         'DESKTOP_MODE': True, 'DEBUG': False, 'TESTING': False,
-        'SECRET_KEY': token, 'DATA_STORAGE_MODE': 'sqlite',
+        'SECRET_KEY': persistent_app_secret(data_dir), 'DATA_STORAGE_MODE': 'sqlite',
         'DATA_DIR': str(data_dir), 'UPLOAD_FOLDER': str(data_dir / 'uploads'),
         'DATABASE_PATH': str(database), 'SQLALCHEMY_DATABASE_URI': f'sqlite:///{database.as_posix()}',
         'COAL_DATA_PATH': str(resources / 'data' / 'test_coal_datas.csv'),

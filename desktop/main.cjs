@@ -87,8 +87,8 @@ function configureMenu() {
       { label: '打开数据文件夹', click: () => shell.openPath(dataDir) },
       { label: '打开日志文件夹', click: () => shell.openPath(logDir) },
       { label: '数据备份说明', click: () => dialog.showMessageBox(window, { type: 'info', title: '备份本地数据',
-        message: '退出应用后，复制数据文件夹中的 coal_system.db 到安全位置。',
-        detail: '该文件包含煤种与计算历史。升级会保留本地数据，数据库结构升级前还会自动生成备份。恢复时先退出应用，再用备份替换该文件。\n\n' + dataDir }) },
+        message: '退出应用后，复制整个数据文件夹到安全位置（包括 coal_system.db 与 .app-secret）。',
+        detail: '数据库包含账号、设置、煤种、批次修订与计算历史。升级会保留本地数据，数据库结构升级前还会自动生成备份。恢复时先退出应用，再用同一份完整备份恢复数据目录。\n\n' + dataDir }) },
       { type: 'separator' }, { label: '退出', role: 'quit' },
     ] },
     { label: '编辑', submenu: [
@@ -103,7 +103,7 @@ function configureMenu() {
     ] },
     { label: '帮助', submenu: [{ label: '关于 CBOS', click: () => dialog.showMessageBox(window, {
       type: 'info', title: '关于 CBOS', message: `CBOS 离线桌面版 ${app.getVersion()}`,
-      detail: '煤粉数据库管理及配煤优化控制台\n煤种、混煤优化、置换比和历史报告均在本机处理。\n示例煤种基准未确认，仅供筛选试算。',
+      detail: '煤粉数据库管理及配煤优化控制台\n煤种、混煤优化、置换比和历史报告均在本机处理。\n示例与旧数据保留原值，补齐相关数据与基准后才可计算。',
     }) }] },
   ]));
 }

@@ -45,3 +45,8 @@ data/history/
 *.zip
 dist/
 build/
+
+/build-info.json
+/release-output/
+
+/outputs/

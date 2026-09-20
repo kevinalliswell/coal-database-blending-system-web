@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { optHistory, optHistoryDetail } from '../lib/api';
 import { qk } from '../lib/query';
 import { dataValidationLabel } from '../lib/blendingResult';
+import { historyProvenance } from '../lib/historyProvenance';
 import { Icon } from '../components/ui/Icon';
 import { EmptyState, SkeletonRows, StatPanel, StatusPill } from '../components/ui/bits';
 import { Drawer } from '../components/ui/Overlay';
@@ -35,21 +36,20 @@ export default function HistoryBlending() {
   const pageRows = filtered.slice((page - 1) * PAGE, page * PAGE);
 
   const feasibleCount = rows.filter((r) => r.constraints_satisfied).length;
-  const avgCost = rows.length ? rows.reduce((a, b) => a + (b.total_price ?? 0), 0) / rows.length : null;
 
   return (
     <div className="page">
       <div className="page__head">
         <div>
           <h1 className="page__title">混煤优化历史</h1>
-          <p className="page__lead">回看每一次混煤优化的推荐配比、关键指标与可行性判断。</p>
+          <p className="page__lead">回看每一次混煤优化的推荐配比、关键指标与可行性判断。各次计算口径见详情，不同口径的价格与热值不能直接比较。</p>
         </div>
       </div>
 
       <div className="grid grid--4 mb-20">
         <StatPanel label="历史记录" value={num(rows.length)} icon="history" tone="cyan" />
         <StatPanel label="可行方案" value={num(feasibleCount)} icon="checkCircle" tone="ember" />
-        <StatPanel label="平均吨煤成本" value={avgCost === null ? '—' : `¥${fixed(avgCost, 1)}`} icon="chart" tone="cyan" />
+        <StatPanel label="未满足数值约束" value={num(rows.length - feasibleCount)} icon="chart" tone="cyan" />
         <StatPanel label="最近运行" value={rows[0] ? shortDate(rows[0].date).slice(5, 16) : '—'} icon="activity" tone="ember" />
       </div>
 
@@ -83,7 +83,7 @@ export default function HistoryBlending() {
                     <th>时间</th>
                     <th>煤种与配比</th>
                     <th className="num">吨煤成本</th>
-                    <th className="num">热值</th>
+                    <th className="num">热值 kcal/kg</th>
                     <th className="num">硫分</th>
                     <th>数学可行性</th>
                     <th style={{ width: 80 }}>操作</th>
@@ -147,6 +147,7 @@ function DetailDrawer({ id, onClose }: { id: number | null; onClose: () => void 
   const [showRaw, setShowRaw] = useState(false);
   const d = detail.data;
   const historicalResult = d && ('result' in d.result_payload ? d.result_payload.result : d.result_payload);
+  const provenance = historyProvenance(d?.result_payload);
   const unverified = historicalResult?.data_validation?.status === 'unverified' || d?.request_payload?.calculation_mode === 'screening';
 
   return (
@@ -185,20 +186,54 @@ function DetailDrawer({ id, onClose }: { id: number | null; onClose: () => void 
           <div>
             <div className="eyebrow mb-8">关键指标</div>
             {[
-              ['吨煤成本', d.total_price === null ? '—' : `¥${fixed(d.total_price, 1)}`],
-              ['综合热值', `${num(d.total_heat)} kcal/kg`],
+              ['吨煤成本', d.total_price === null ? '—' : `${fixed(d.total_price, 1)} ${provenance.price === '未记录' ? '元/吨（基准未记录）' : provenance.price}`],
+              ['综合热值', `${num(d.total_heat)} kcal/kg · ${provenance.heat}`],
               ['灰分', `${fixed(d.total_ash, 2)} %`],
               ['挥发分', `${fixed(d.total_volatile, 2)} %`],
               ['固定碳', `${fixed(d.total_fixed_carbon, 2)} %`],
               ['硫分', `${fixed(d.total_sulfur, 3)} %`],
               ['迭代次数', num(d.iterations)],
               ['计算耗时', `${fixed(d.time_taken, 2)} s`],
-              ['质量风险', fixed(d.fitness_value, 4)],
+              ['质量偏离分', fixed(d.fitness_value, 4)],
             ].map(([k, v]) => (
               <div key={k} className="kv">
                 <span className="kv__k">{k}</span>
                 <span className="kv__v">{v}</span>
               </div>
+            ))}
+          </div>
+
+          <div>
+            <div className="eyebrow mb-8">本次保存的计算口径</div>
+            {provenance.metadata.map(([key, value]) => (
+              <div key={key} className="kv"><span className="kv__k">{key}</span><span className="kv__v">{value}</span></div>
+            ))}
+          </div>
+
+          <div>
+            <div className="eyebrow mb-8">化验原值与计算采用值</div>
+            {provenance.assays.length === 0 ? (
+              <p className="text-sm text-mute">原始化验及采用值快照未记录；不以当前资料或默认设置补写旧历史。</p>
+            ) : provenance.assays.map((assay) => (
+              <details key={assay.id} className="mb-12">
+                <summary className="fw-600 text-sm">{assay.label} · 化验修订 #{assay.id}</summary>
+                <p className="text-xs text-mute">报告编号：{assay.report} · 采样时间：{assay.sampledAt}</p>
+                <div className="tbl-wrap">
+                  <table className="tbl">
+                    <thead><tr><th>指标</th><th>原始值 / 定义</th><th>计算采用值 / 定义</th><th>来源</th></tr></thead>
+                    <tbody>{assay.rows.map((row) => (
+                      <tr key={row.field}>
+                        <td>{row.label}</td>
+                        <td><div className="mono">{row.rawValue}</div><div className="text-xs text-mute">{row.rawDefinition}</div></td>
+                        <td><div className="mono">{row.adoptedValue}</div><div className="text-xs text-mute">{row.adoptedDefinition}</div></td>
+                        <td className="text-xs">{row.source}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+                <div className="text-xs text-mute mt-8">换算记录</div>
+                {assay.trace.length ? <ul className="text-xs">{assay.trace.map((line, index) => <li key={index}>{line}</li>)}</ul> : <p className="text-xs text-mute">未记录</p>}
+              </details>
             ))}
           </div>
 

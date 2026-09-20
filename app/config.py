@@ -34,6 +34,9 @@ class Config:
     APP_NAME = "coal-database-blending-system-web"
     SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 
+    PUBLIC_ORIGIN = os.getenv('PUBLIC_ORIGIN')
+    SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', '').lower() in {'true', '1'}
+
     HOST = '127.0.0.1' if DESKTOP_MODE else os.getenv("HOST", "0.0.0.0")
     PORT = 0 if DESKTOP_MODE else int(os.getenv("PORT", "5000"))
 
@@ -53,6 +56,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = (_build_default_database_uri() if DESKTOP_MODE
                                else os.getenv("DATABASE_URL", _build_default_database_uri()))
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    AUTO_INITIALIZE_COAL_DATA = False
 
     JSON_SORT_KEYS = False
     LOG_LEVEL = logging.INFO

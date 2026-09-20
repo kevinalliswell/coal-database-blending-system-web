@@ -6,6 +6,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 root = Path(SPECPATH).parent
 data_files = [
+    (str(root / "build-info.json"), "."),
     (str(root / "frontend" / "dist"), "frontend/dist"),
     (str(root / "data" / "test_coal_datas.csv"), "data"),
     (str(root / "migrations"), "migrations"),

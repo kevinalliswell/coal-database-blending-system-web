@@ -13,6 +13,8 @@ from app.routes.reports import reports_bp
 
 def register_blueprints(app) -> None:
     """注册所有业务蓝图。"""
+    from app.routes.catalog import catalog_bp
+    app.register_blueprint(catalog_bp, url_prefix="/api")
     app.register_blueprint(page_bp)
     app.register_blueprint(coal_bp, url_prefix="/api")
     app.register_blueprint(optimization_bp, url_prefix="/api")

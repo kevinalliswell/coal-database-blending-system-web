@@ -3,6 +3,7 @@
 
 from datetime import datetime
 from io import BytesIO
+import json
 import logging
 
 import pandas as pd
@@ -52,7 +53,8 @@ def create_unified_a4_report(wb, data, user_constraints=None):
 
     row = 1
     row = _write_title_block(ws, row, result)
-    row = _write_data_validation_block(ws, row, result)
+    snapshot = data.get('input_snapshot') or {}
+    row = _write_data_validation_block(ws, row, result, snapshot)
     row = _write_summary_block(ws, row, result)
     row = _write_ratio_block(ws, row, result)
     row = _write_performance_block(ws, row, result, constraints)
@@ -67,6 +69,7 @@ def create_unified_a4_report(wb, data, user_constraints=None):
     ws.oddFooter.left.text = '&D &T'
     ws.oddFooter.center.text = '第 &P 页 / 共 &N 页'
     ws.oddFooter.right.text = '智能煤炭混配系统'
+    _write_provenance_sheets(wb, snapshot)
 
 
 def _extract_result(data):
@@ -148,12 +151,33 @@ def _data_validation_label(result):
     return '基准验证未记录'
 
 
-def _write_data_validation_block(ws, row, result):
+def _snapshot_metadata(snapshot, validation):
+    basis = snapshot.get('ratio_basis') or validation.get('ratio_basis')
+    basis_label = {'ar': '收到基 ar（收到煤质量）', 'd': '干基 d（干煤质量）',
+                   'ad': '空干基 ad（分析样质量）'}.get(basis, '未记录')
+    price_label = {'ar': '元/收到吨', 'd': '元/干吨', 'ad': '元/空干吨'}.get(basis, '未记录')
+    heat = {'gr_v': '恒容高位 Qgr,v', 'net_v': '恒容低位 Qnet,v',
+            'net_p': '恒压低位 Qnet,p'}.get(snapshot.get('heat_type'), '未记录')
+    operator = snapshot.get('operator') or snapshot.get('actor') or {}
+    operator_label = ' / '.join(str(operator[key]) for key in ('display_name', 'username', 'role') if operator.get(key)) or '未记录'
+    return [f'配比质量基准：{basis_label}', f'热值定义：{heat}',
+            f'计价口径：{price_label}',
+            f'公式版本：{snapshot.get("formula_version") or "未记录"}',
+            f'设置版本：{(snapshot.get("settings") or {}).get("version", "未记录")}',
+            f'操作者：{operator_label}',
+            ('热值单位：kcal_IT/kg；1 kcal_IT = 4.1868 kJ'
+             if snapshot.get('schema_version') == 2 else '热值数值单位：kcal/kg；旧记录卡定义未记录')]
+
+
+def _write_data_validation_block(ws, row, result, snapshot=None):
+    snapshot = snapshot or {}
     validation = result.get('data_validation') or {}
     row = _write_section_title(ws, row, '数据基准与用途')
     lines = [
         _data_validation_label(result),
-        f"配比质量基准：{validation.get('ratio_basis', '未记录')}",
+        *_snapshot_metadata(snapshot, validation),
+        ('原始化验及采用值见“化验原值与采用值”工作表，换算和运行参数见“换算与运行快照”。'
+         if snapshot.get('assays') else '原始化验及采用值快照未记录；不以当前资料或默认设置补写旧历史。'),
         '检查范围为输入基准一致性及工业分析闭合，不代表现场工艺验证。',
         *(validation.get('warnings') or []),
     ]
@@ -163,6 +187,68 @@ def _write_data_validation_block(ws, row, result):
         ws.row_dimensions[row].height = max(24, 16 * ((len(line) // 50) + 1))
         row += 1
     return row + 1
+
+
+def _append_provenance_row(ws, values):
+    # User-supplied labels/report identifiers must remain text in spreadsheets.
+    safe = ["'" + value if isinstance(value, str) and value.startswith(('=', '+', '-', '@')) else value
+            for value in values]
+    ws.append(safe)
+
+
+def _style_provenance_sheet(ws):
+    ws.freeze_panes = 'A2'
+    ws.auto_filter.ref = ws.dimensions
+    ws.sheet_view.showGridLines = False
+    _setup_a4_page(ws)
+    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+    ws.print_title_rows = '$1:$1'
+    for cell in ws[1]:
+        cell.font, cell.fill = TABLE_HEADER_FONT, TABLE_HEADER_FILL
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            cell.font = SMALL_FONT
+            cell.alignment = Alignment(vertical='top', wrap_text=True)
+    for column in range(1, ws.max_column + 1):
+        ws.column_dimensions[get_column_letter(column)].width = 22 if ws.max_column > 4 else (32 if column < 3 else 100)
+    ws.print_area = ws.dimensions
+
+
+def _write_provenance_sheets(wb, snapshot):
+    assays = snapshot.get('assays') or []
+    if not assays:
+        return
+    values_sheet = wb.create_sheet('化验原值与采用值')
+    _append_provenance_row(values_sheet, ['化验修订ID', '煤种/批次/修订', '指标', '原始值', '原始单位', '原始基准',
+                                       '原始热值/氢定义', '采用值', '采用单位', '采用基准', '来源说明'])
+    trace_sheet = wb.create_sheet('换算与运行快照')
+    _append_provenance_row(trace_sheet, ['类别', '标识', '保存内容'])
+    for line in _snapshot_metadata(snapshot, snapshot.get('data_validation') or {}):
+        _append_provenance_row(trace_sheet, ['本次口径', '', line])
+    for key in ('constraints', 'ga_config', 'algorithm_params', 'settings'):
+        for field, value in (snapshot.get(key) or {}).items():
+            _append_provenance_row(trace_sheet, [key, field, json.dumps(value, ensure_ascii=False)])
+    for assay in assays:
+        raw = assay.get('raw') or {}
+        eligibility = (assay.get('eligibility') or {}).get('blending') or {}
+        normalized = eligibility.get('values') or {}
+        label = assay.get('label') or str(assay.get('id', '未记录'))
+        for field in dict.fromkeys([*raw, *normalized]):
+            item = raw.get(field) or {}
+            definition = item.get('heat_type', '')
+            if field == 'hydrogen_content':
+                includes = item.get('hydrogen_includes_moisture')
+                definition = {True: '包含水中氢', False: '不含水中氢'}.get(includes, '水中氢定义未记录')
+            unit = ('kcal_IT/kg' if field == 'calorific_value' else 'CNY/t' if field == 'price' else '%') if field in normalized else None
+            source = '原始值换算/直接采用' if item.get('value') is not None else '固定碳标准差减派生（原始报告未提供）' if field == 'fixed_carbon' and field in normalized else '原始值未记录'
+            _append_provenance_row(values_sheet, [assay.get('id'), label, field, item.get('value'), item.get('unit'), item.get('basis'),
+                definition, normalized.get(field), unit, snapshot.get('ratio_basis') if field in normalized else None, source])
+        for key in ('coal_id', 'batch_id', 'revision', 'report_number', 'sampled_at', 'source', 'created_by', 'created_at'):
+            _append_provenance_row(trace_sheet, ['化验身份', f'{label} / {key}', assay.get(key)])
+        for line in eligibility.get('trace') or []:
+            _append_provenance_row(trace_sheet, ['换算过程', label, str(line)])
+    _style_provenance_sheet(values_sheet)
+    _style_provenance_sheet(trace_sheet)
 
 
 def _write_summary_block(ws, row, result):

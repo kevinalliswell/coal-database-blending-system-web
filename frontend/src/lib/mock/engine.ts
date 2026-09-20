@@ -334,7 +334,7 @@ function within(v: number, lo: number, hi: number) {
 }
 
 export async function mockOptimize(req: OptimizationRequest): Promise<OptimizationResponse> {
-  const coals = req.selected_coal_ids
+  const coals = (req.selected_coal_ids ?? [])
     .map((id) => store.coals.find((c) => c.id === id))
     .filter((c): c is Coal => !!c);
   if (coals.length < 2) {

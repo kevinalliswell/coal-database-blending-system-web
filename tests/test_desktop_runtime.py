@@ -18,6 +18,10 @@ ROOT = Path(__file__).resolve().parents[1]
 TOKEN = 'a1' * 32
 HEADERS = {'X-CBOS-Token': TOKEN}
 
+def signed_in_client(app):
+    from access_helpers import authenticated_client
+    return authenticated_client(app, HEADERS)
+
 
 @pytest.fixture
 def resources(tmp_path):
@@ -47,21 +51,23 @@ def test_token_protects_health_api_spa_and_assets_before_any_route(tmp_path, res
     app = desktop_app(tmp_path / 'user-data', resources)
     try:
         client = app.test_client()
-        for route in ['/health', '/api/coals', '/', '/smart-blending', '/assets/app.js']:
+        for route in ['/health', '/api/catalog', '/', '/smart-blending', '/assets/app.js']:
             assert client.get(route).status_code == 401
             assert client.get(route, headers={'X-CBOS-Token': 'wrong'}).status_code == 401
-            assert client.get(route, headers=HEADERS).status_code == 200
-        assert client.open('/api/coals', method='OPTIONS').status_code == 401
-        assert b'desktop fixture' in client.get('/', headers=HEADERS).data
-        rows = client.get('/api/coals?page_size=0', headers=HEADERS).get_json()['data']
+            expected = 401 if route.startswith('/api/') else 200
+            assert client.get(route, headers=HEADERS).status_code == expected
+        assert client.open('/api/catalog', method='OPTIONS').status_code == 401
+        client = signed_in_client(app)
+        assert b'desktop fixture' in client.get('/').data
+        rows = client.get('/api/assays').get_json()['data']
         assert len(rows) == 8
-        assert all(coal['analysis_basis'] == 'unknown' for coal in rows)
-        assert rows[0]['calorific_value'] == 7419
+        assert all(not row['eligibility']['blending']['eligible'] for row in rows)
+        assert rows[0]['raw']['calorific_value']['value'] == 7419
     finally:
         close_app(app)
 
 
-def test_user_data_persists_and_deleted_demo_coals_do_not_return(tmp_path, resources, monkeypatch):
+def test_user_data_persists_and_archived_demo_coals_do_not_return(tmp_path, resources, monkeypatch):
     data_dir = tmp_path / 'user data 中文'
     forbidden = tmp_path / 'inherited-production.db'
     monkeypatch.setenv('DATABASE_URL', f'sqlite:///{forbidden}')
@@ -69,35 +75,39 @@ def test_user_data_persists_and_deleted_demo_coals_do_not_return(tmp_path, resou
     app = desktop_app(data_dir, resources)
     try:
         assert Path(app.config['UPLOAD_FOLDER']) == data_dir / 'uploads'
-        client = app.test_client()
-        result = client.post('/api/coals', headers=HEADERS, json={
-            'name': '我的煤', 'type': '烟煤', 'price': 650, 'calorific_value': 6500,
-            'ash_content': 10, 'volatile_matter': 25, 'fixed_carbon': 60, 'total_sulfur': .5,
-        })
-        assert result.status_code == 200
-        uploaded = client.post('/api/coals/upload', headers=HEADERS, data={'file': (
-            io.BytesIO((resources / 'data' / 'test_coal_datas.csv').read_bytes()), 'coals.csv')})
-        assert uploaded.status_code == 200
-        assert list((data_dir / 'uploads').glob('*.csv'))
+        client = signed_in_client(app)
+        created = client.post('/api/catalog', json={'name': '我的煤', 'type': '烟煤'})
+        assert created.status_code == 201
+        coal_id = created.get_json()['data']['id']
+        batch = client.post(f'/api/catalog/{coal_id}/batches', json={'code': '到货-001'})
+        assert batch.status_code == 201
+        assay = client.post(f'/api/batches/{batch.get_json()["data"]["id"]}/assays', json={'raw': {
+            'ash_content': {'value': 12, 'unit': '%', 'basis': 'unknown'}}})
+        assert assay.status_code == 201
+        first_secret = app.config['SECRET_KEY']
     finally:
         close_app(app)
     app = desktop_app(data_dir, resources)
     try:
-        client = app.test_client()
-        coals = client.get('/api/coals?page_size=0', headers=HEADERS).get_json()['data']
+        assert app.config['SECRET_KEY'] == first_secret and first_secret != TOKEN
+        assert app.test_client().get('/api/catalog', headers=HEADERS).status_code == 401
+        client = signed_in_client(app)
+        coals = client.get('/api/catalog').get_json()['data']
         assert len(coals) == 9 and any(coal['name'] == '我的煤' for coal in coals)
         for coal in coals:
-            assert client.delete(f'/api/coals/{coal["id"]}', headers=HEADERS).status_code == 200
+            assert client.patch(f'/api/catalog/{coal["id"]}', json={'archived': True}).status_code == 200
     finally:
         close_app(app)
     app = desktop_app(data_dir, resources)
     try:
-        assert app.test_client().get('/api/coals', headers=HEADERS).get_json()['data'] == []
+        client = signed_in_client(app)
+        assert client.get('/api/catalog').get_json()['data'] == []
+        assert len(client.get('/api/catalog?include_archived=true').get_json()['data']) == 9
     finally:
         close_app(app)
     assert not forbidden.exists()
     assert sorted(str(path.relative_to(resources)) for path in resources.rglob('*')) == initial_files
-    assert not list((data_dir / 'backups').glob('*.db'))  # no upgrade on an already-current database
+    assert not list((data_dir / 'backups').glob('*.db'))
 
 
 def test_old_revision_gets_online_backup_before_upgrade(tmp_path, resources):
@@ -146,13 +156,13 @@ def test_percent_in_install_and_user_paths_supports_first_start_and_upgrade(tmp_
                                "values (99,'保留原值','无烟煤',800,7000,10,10,77.5,.5)")
     app = desktop_app(data_dir, install)
     try:
-        rows = app.test_client().get('/api/coals?page_size=0', headers=HEADERS).get_json()['data']
+        rows = signed_in_client(app).get('/api/coals?page_size=0').get_json()['data']
         assert len(rows) == (1 if existing_revision else 8)
         assert all(row['analysis_basis'] == 'unknown' for row in rows)
         if existing_revision:
             assert (rows[0]['name'], rows[0]['fixed_carbon']) == ('保留原值', 77.5)
         with sqlite3.connect(database) as connection:
-            assert connection.execute('select version_num from alembic_version').fetchone()[0] == 'c8a1d24f5e67'
+            assert connection.execute('select version_num from alembic_version').fetchone()[0] == 'e3b8c52da10f'
     finally:
         close_app(app)
     backups = list((data_dir / 'backups').glob('*.db'))
@@ -200,22 +210,25 @@ def test_desktop_config_never_loads_dotenv(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-def test_chinese_csv_upload_preserves_extension_and_uses_unique_safe_names(tmp_path, resources):
-    data_dir = tmp_path / 'user-data'
-    app = desktop_app(data_dir, resources)
+def test_chinese_csv_multipart_preview_preserves_values_without_path_writes(tmp_path, resources):
+    app = desktop_app(tmp_path / 'user-data', resources)
     try:
-        client = app.test_client()
-        names = []
+        client = signed_in_client(app)
+        tokens = []
+        content = '煤种名称,煤种类型,批次编号,ash_content.value,ash_content.unit,ash_content.basis\n中文导入煤,烟煤,批次一,12,%,unknown\n'
         for filename in ['煤种 样本.csv', '煤种 样本.csv', '../../煤种 样本.csv']:
-            response = client.post('/api/coals/upload', headers=HEADERS, data={'file': (
-                io.BytesIO((resources / 'data' / 'test_coal_datas.csv').read_bytes()), filename)})
+            response = client.post('/api/catalog/import/preview', data={'file': (
+                io.BytesIO(content.encode('utf-8-sig')), filename),
+                'confirmed_headers': json.dumps(['ash_content.value'])})
             assert response.status_code == 200, response.get_json()
-            payload = response.get_json()
-            assert payload['status'] == 'success'
-            names.append(payload['filename'])
-        assert len(set(names)) == 3
-        assert all(Path(name).name == name and name.endswith('.csv') for name in names)
-        assert len(list((data_dir / 'uploads').glob('*.csv'))) == 3
+            payload = response.get_json()['data']
+            assert payload['can_commit'], payload
+            assert payload['rows'][0]['raw']['ash_content']['value'] == 12
+            tokens.append(payload['preview_token'])
+        assert len(set(tokens)) == 3
+        saved = client.post('/api/catalog/import/commit', json={'preview_token': tokens[-1]})
+        assert saved.status_code == 201, saved.get_json()
+        assert not list((Path(app.config['UPLOAD_FOLDER'])).glob('*'))
     finally:
         close_app(app)
 

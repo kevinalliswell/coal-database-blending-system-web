@@ -1,6 +1,7 @@
 import type { EChartsOption } from 'echarts';
 import { Chart, axisText, tooltipBase, useChartPalette } from '../ui/Chart';
 import type { BlendingConstraints, ParetoSolution } from '../../lib/types';
+import { heatDisplay } from '../../lib/v2';
 import { CONSTRAINT_ROWS } from '../../lib/constants';
 
 /* ---- Ratio donut ---- */
@@ -14,7 +15,7 @@ export function RatioDonut({ names, ratios }: { names: string[]; ratios: number[
       trigger: 'item',
       formatter: (p: unknown) => {
         const d = p as { name: string; value: number; percent: number };
-        return `${d.name}<br/>配比 <b>${d.value}%</b>`;
+        return `${String(d.name).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!))}<br/>配比 <b>${d.value}%</b>`;
       },
     },
     series: [
@@ -34,14 +35,14 @@ export function RatioDonut({ names, ratios }: { names: string[]; ratios: number[
 }
 
 /* ---- Constraint-margin radar (position within each process window) ---- */
-export function MarginRadar({ sol, constraints }: { sol: ParetoSolution; constraints: BlendingConstraints }) {
+export function MarginRadar({ sol, constraints, heatUnit = 'kcal/kg' }: { sol: ParetoSolution; constraints: BlendingConstraints; heatUnit?: string }) {
   const P = useChartPalette();
   const dims = CONSTRAINT_ROWS.map((r) => {
     const lo = constraints[r.min] as number;
     const hi = constraints[r.max] as number;
     const val = (sol as unknown as Record<string, number>)[r.metric] ?? 0;
     const pos = hi > lo ? ((val - lo) / (hi - lo)) * 100 : 50;
-    return { name: r.label, pos: Math.max(0, Math.min(100, pos)), val, lo, hi, unit: r.unit };
+    return { name: r.label, pos: Math.max(0, Math.min(100, pos)), val: r.key === 'heat' ? heatDisplay(val, heatUnit).toFixed(2) : val, lo: r.key === 'heat' ? heatDisplay(lo, heatUnit).toFixed(2) : lo, hi: r.key === 'heat' ? heatDisplay(hi, heatUnit).toFixed(2) : hi, unit: r.key === 'heat' ? heatUnit : r.unit };
   });
   const option: EChartsOption = {
     tooltip: {
@@ -82,12 +83,14 @@ export function MarginRadar({ sol, constraints }: { sol: ParetoSolution; constra
 
 /* ---- Pareto scatter (cost vs quality risk), interactive ---- */
 export function ParetoScatter({
+  heatUnit = 'kcal/kg',
   solutions,
   recommendedId,
   activeId,
   onPick,
 }: {
   solutions: ParetoSolution[];
+  heatUnit?: string;
   recommendedId: string;
   activeId: string;
   onPick: (id: string) => void;
@@ -118,7 +121,7 @@ export function ParetoScatter({
       ...tooltipBase(P),
       formatter: (p: unknown) => {
         const d = p as { data: { value: number[]; isRec: boolean } };
-        return `${d.data.isRec ? '★ 推荐方案<br/>' : ''}成本 <b>¥${d.data.value[0].toFixed(1)}</b><br/>质量偏离分 <b>${d.data.value[1].toFixed(3)}</b><br/>热值 <b>${Math.round(d.data.value[2])}</b> kcal`;
+        return `${d.data.isRec ? '★ 推荐方案<br/>' : ''}成本 <b>¥${d.data.value[0].toFixed(1)}</b><br/>质量偏离分 <b>${d.data.value[1].toFixed(3)}</b><br/>热值 <b>${heatDisplay(d.data.value[2], heatUnit).toFixed(2)}</b> ${heatUnit}`;
       },
     },
     xAxis: {

@@ -1,6 +1,6 @@
 // Apply the saved theme before React mounts; keep this local for desktop CSP.
 try {
-  const saved = localStorage.getItem('cbos_theme');
+  const saved = localStorage.getItem('cbos_theme_anonymous');
   const theme = saved === 'light' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', theme);
   document.documentElement.style.colorScheme = theme;

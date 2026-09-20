@@ -11,44 +11,19 @@ from app.extensions import db
 from app.models import Coal, OptimizationHistory
 
 
-@pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setattr(Config, 'SQLALCHEMY_DATABASE_URI', f'sqlite:///{tmp_path / "snapshots.db"}')
-    monkeypatch.setattr(Config, 'COAL_DATA_PATH', str(tmp_path / 'no-seed.csv'))
-    app = create_app('production')
-    app.config['TESTING'] = True
-    with app.app_context():
-        db.create_all()
-        db.session.add_all([
-            Coal(id=1, name='无烟煤A', type='无烟煤', price=900, calorific_value=7000,
-                 ash_content=10, volatile_matter=10, fixed_carbon=78, total_sulfur=0.6,
-                 total_moisture=8, air_dry_moisture=2, hgi=60,
-                 analysis_basis='ad', calorific_basis='ad', price_basis='ad', calorific_type='net'),
-            Coal(id=2, name='烟煤B', type='烟煤', price=600, calorific_value=6200,
-                 ash_content=8, volatile_matter=30, fixed_carbon=60, total_sulfur=0.4,
-                 total_moisture=18, air_dry_moisture=2, hgi=55,
-                 analysis_basis='ad', calorific_basis='ad', price_basis='ad', calorific_type='net'),
-        ])
-        db.session.commit()
-    yield app.test_client()
-    with app.app_context():
-        db.session.remove()
+from test_v2_optimization import v2_client as client, add_assay, request_for, raw_fixture
 
 
-def solve(client, calculation_mode='verified', ratio_basis='ad'):
-    response = client.post('/api/optimization', json={
-        'calculation_mode': calculation_mode,
-        'ratio_basis': ratio_basis,
-        'selected_coal_ids': [1, 2],
-        'constraints': {'heat_min': 6000, 'heat_max': 7200, 'heat_target': 6800,
-                        'sulfur_min': 0, 'sulfur_max': 0.7},
-        'ga_params': {'population_size': 12, 'max_generations': 2,
-                      'tournament_size': 2, 'parallel_computing': False, 'parallel_workers': 9},
-    })
-    assert response.status_code == 200
-    result = response.get_json()
-    assert result['status'] == 'success'
-    return result
+def solve(client, calculation_mode=None, ratio_basis=None):
+    first = add_assay(client, '无烟煤A', 0)
+    second = add_assay(client, '烟煤B', 3)
+    request = request_for([first, second])
+    request['constraints'].update(heat_min=6000, heat_max=7200, heat_target=6800, sulfur_max=.7)
+    request['ga_params'].update(population_size=12, max_generations=2, parallel_computing=False, parallel_workers=9)
+    response = client.post('/api/optimization', json=request)
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()['status'] == 'success'
+    return response.get_json()
 
 
 def performance_row(response, label):
@@ -61,42 +36,30 @@ def performance_row(response, label):
 def test_response_and_history_preserve_coal_properties_and_effective_configuration(client):
     payload = solve(client)
     snapshot = payload['input_snapshot']
-    assert snapshot['schema_version'] == 1
-    assert snapshot['calculation_mode'] == 'verified'
-    assert snapshot['ratio_basis'] == 'ad'
+    assert snapshot['schema_version'] == 2
+    assert snapshot['ratio_basis'] == 'ar'
     assert snapshot['data_validation'] == payload['result']['data_validation']
-    assert snapshot['data_validation']['status'] == 'verified'
-    assert snapshot['coals'][0]['price'] == 900
-    assert snapshot['coals'][0]['total_moisture'] == 8
-    assert snapshot['coals'][0]['analysis_basis'] == 'ad'
-    assert snapshot['coals'][0]['calorific_type'] == 'net'
-    assert snapshot['algorithm_coals'][0]['price'] == 900
+    assert snapshot['assays'][0]['raw']['price']['value'] == 950
+    assert snapshot['assays'][0]['raw']['total_moisture']['value'] == 8
+    assert snapshot['assays'][0]['raw']['ash_content']['basis'] == 'd'
+    assert snapshot['algorithm_coals'][0]['price'] == pytest.approx(950)
     assert snapshot['ga_config']['parallel_workers'] == 1
     assert snapshot['ga_config']['population_size'] == 12
     assert snapshot['constraints']['ash_max'] == 20
     assert payload['constraints'] == snapshot['constraints']
-
-    with client.application.app_context():
-        db.session.get(Coal, 1).price = 1234
-        db.session.commit()
+    batch_id = snapshot['assays'][0]['batch_id']
+    changed = raw_fixture(); changed['price']['value'] = 1234
+    assert client.post(f'/api/batches/{batch_id}/assays', json={'raw': changed}).status_code == 201
     history = client.get('/api/optimization/history').get_json()['data'][0]
     detail = client.get(f'/api/optimization/history/{history["id"]}').get_json()['data']
     assert detail['result_payload']['input_snapshot'] == snapshot
     assert detail['constraints'] == snapshot['constraints']
 
 
-def test_screening_snapshot_preserves_explicit_mode_and_validation_for_replay(client):
-    payload = solve(client, calculation_mode='screening')
-    snapshot = payload['input_snapshot']
-    assert snapshot['calculation_mode'] == 'screening'
-    assert snapshot['ratio_basis'] == 'ad'
-    assert snapshot['data_validation'] == payload['result']['data_validation']
-    assert snapshot['data_validation']['status'] == 'unverified'
-    assert snapshot['data_validation']['scope'] == 'screening_only'
-    history = client.get('/api/optimization/history').get_json()['data'][0]
-    detail = client.get(f'/api/optimization/history/{history["id"]}').get_json()['data']
-    assert detail['result_payload']['input_snapshot'] == snapshot
-    assert detail['request_payload']['calculation_mode'] == 'screening'
+def test_removed_screening_cannot_create_new_history(client):
+    response = client.post('/api/optimization', json={'selected_coal_ids': [1,2], 'calculation_mode': 'screening'})
+    assert response.status_code == 400
+    assert client.get('/api/optimization/history').get_json()['data'] == []
 
 
 def test_current_export_uses_constraints_from_the_completed_response(client):
