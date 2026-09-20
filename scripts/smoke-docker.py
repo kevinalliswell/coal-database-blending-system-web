@@ -1,6 +1,7 @@
 """Run a real Docker image against disposable fresh and 1.x databases."""
 import argparse
 from datetime import datetime, timezone
+from http.client import HTTPException
 import http.cookiejar
 import json
 import math
@@ -23,12 +24,12 @@ class API:
         self.csrf = ''
         self.opener = build_opener(HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
-    def call(self, path, body=None, method=None, expected=200, binary=False):
+    def call(self, path, body=None, method=None, expected=200, binary=False, timeout=180):
         method = method or ('POST' if body is not None else 'GET')
         headers = {'X-CSRF-Token': self.csrf, 'Content-Type': 'application/json'}
         request = Request(self.url + path, data=None if body is None else json.dumps(body).encode(), headers=headers, method=method)
         try:
-            response = self.opener.open(request, timeout=180)
+            response = self.opener.open(request, timeout=timeout)
         except HTTPError as error:
             response = error
         raw = response.read()
@@ -92,14 +93,20 @@ def verify_system(info, expected_commit, expected_version):
     assert info['mode'] == 'web'
 
 
-def wait_ready(url):
-    for _ in range(90):
+def wait_ready(url, timeout=90):
+    deadline = time.monotonic() + timeout
+    last_error = None
+    while (remaining := deadline - time.monotonic()) > 0:
         try:
-            API(url).call('/health')
+            health = API(url).call('/health', timeout=min(5, remaining))
+            assert health.get('status') == 'ok', health
             return
-        except (URLError, HTTPError, AssertionError):
-            time.sleep(1)
-    raise RuntimeError('Container did not become healthy')
+        except (URLError, ConnectionError, TimeoutError, HTTPException, json.JSONDecodeError, AssertionError) as error:
+            # Docker may accept the port before Gunicorn can serve a response.
+            # Only readiness probes retry; business API calls remain strict.
+            last_error = error
+            time.sleep(min(1, max(0, deadline - time.monotonic())))
+    raise RuntimeError('Container did not become healthy') from last_error
 
 
 def scenario(image, output, expected_commit, expected_version, legacy=False):
