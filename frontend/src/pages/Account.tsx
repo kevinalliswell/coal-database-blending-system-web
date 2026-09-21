@@ -20,8 +20,8 @@ export default function Account() {
     } catch (error) { setError((error as Error).message); }
     finally { setBusy(false); }
   }
-  return <div className="page"><div className="page__head"><div><h1 className="page__title">我的账号</h1><p className="page__lead">{user.display_name} · {user.username} · {ROLE_LABELS[user.role]}</p></div></div>
-    <section className="panel v2-card" style={{ maxWidth: 640 }}><h2>修改密码</h2><p className="text-mute">密码至少 12 位。修改后，本账号的所有会话都会退出，需要重新登录。</p>
+  return <div className="page account-page"><div className="page__head"><div><h1 className="page__title">我的账号</h1><p className="page__lead">{user.display_name} · {user.username} · {ROLE_LABELS[user.role]}</p></div></div>
+    <section className="panel v2-card"><h2>修改密码</h2><p className="text-mute">密码至少 12 位。修改后，本账号的所有会话都会退出，需要重新登录。</p>
       <form className="v2-form" onSubmit={submit}>
         <label>当前密码<input type="password" required autoComplete="current-password" value={current} onChange={e => setCurrent(e.target.value)} /></label>
         <label>新密码<input type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} /></label>

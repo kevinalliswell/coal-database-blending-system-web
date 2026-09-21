@@ -31,6 +31,7 @@ Web 不开放首管理员 HTTP 初始化；使用服务器 CLI。桌面 `POST /a
 | /api/catalog/import/preview | POST | 文件或粘贴文本预览 |
 | /api/catalog/import/commit | POST | `{preview_token}` 一次性提交 |
 | /api/catalog/template | GET | `?format=csv` 或 `xlsx` 模板 |
+| /api/catalog/test-data | GET | `?format=csv` 或 `xlsx` 六煤合成测试表；需 read 权限，仅下载，不写库 |
 | /api/catalog/export | GET | 同模板导出，包含全部修订 |
 
 catalog、batches、assays 列表默认排除归档，可用 `include_archived=true` 查看；`page_size=0` 表示全部。导出默认保留全部历史修订（含归档），可显式指定 `include_archived=false`。
@@ -68,6 +69,8 @@ catalog、batches、assays 列表默认排除归档，可用 `include_archived=t
 错误包括 409 settings_changed、422 data_conflict、422 assay_not_eligible（详情中的 issue 区分 missing/conversion_dependency/conflict 等）、404 record_not_found、400 invalid_request。
 
 `GET /api/optimization/history` 和 `/{id}` 读历史。`POST /api/optimization/export/current` 导出已完成响应；`GET /api/optimization/export/{id}` 导出历史。报告以结果快照为准。
+
+两类计算历史的 `date` 字段：SQLite `CURRENT_TIMESTAMP` 产生的 UTC 时间序列化为带 `Z` 的 ISO 时间；已有明确时区的值保留其偏移。其他数据库未记录时区的旧值保持 `YYYY-MM-DD HH:mm:ss`，表示时间口径未声明，客户端不得猜作 UTC 或本地时间。界面仅对带 `Z` / 偏移的值转换为浏览器本地时间并计算“几分钟前”；无时区值按原始绝对时间显示。此规则只改变响应，不改写历史存储或结果快照。
 
 ## 置换比
 

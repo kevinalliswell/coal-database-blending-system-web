@@ -49,6 +49,16 @@ class OptimizationHistory(db.Model):
             return fallback
 
     def to_summary_dict(self) -> dict:
+        date = self.timestamp
+        if self.created_at:
+            if self.created_at.tzinfo is not None:
+                date = self.created_at.isoformat()
+            elif db.engine.dialect.name == "sqlite":
+                # SQLite CURRENT_TIMESTAMP is UTC, even on a local-time host.
+                date = self.created_at.isoformat() + "Z"
+            else:
+                # Existing database sessions may have used an unknown zone.
+                date = self.created_at.strftime("%Y-%m-%d %H:%M:%S")
         coal_names = self._loads_json(self.coal_names, [])
         optimal_ratios = self._loads_json(self.optimal_ratios, [])
         ratio_items = []
@@ -66,7 +76,7 @@ class OptimizationHistory(db.Model):
         return {
             "id": self.id,
             "timestamp": self.timestamp,
-            "date": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else self.timestamp,
+            "date": date,
             "coal_names": coal_names,
             "optimal_ratios": optimal_ratios,
             "ratio_items": ratio_items,

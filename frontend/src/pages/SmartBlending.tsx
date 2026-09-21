@@ -275,7 +275,7 @@ function BlendingWorkspace({settings}: {settings: Settings}) {
                   <div className="cwin__unit">{heatUnit}</div>
                 </div>
                 <div className="row gap-10 wrap">
-                  <div className="minmax grow" style={{ minWidth: 200 }}>
+                  <div className="minmax grow">
                     <input className="input" type="number" aria-label="热值下限" step="any" value={+heatDisplay(cfg.constraints.heat_min, heatUnit).toFixed(4)} onChange={(e) => patchConstraint('heat_min', heatCanonical(+e.target.value, heatUnit))} />
                     <span className="minmax__sep">–</span>
                     <input className="input" type="number" aria-label="热值上限" step="any" value={+heatDisplay(cfg.constraints.heat_max, heatUnit).toFixed(4)} onChange={(e) => patchConstraint('heat_max', heatCanonical(+e.target.value, heatUnit))} />
@@ -335,9 +335,9 @@ function BlendingWorkspace({settings}: {settings: Settings}) {
                           <div className="text-xs text-mute">{c.type} · ¥{fixed(c.price, 0)} · {fixed(heatDisplay(c.calorific_value, heatUnit), 2)} {heatUnit}</div>
                         </div>
                         <div className="minmax">
-                          <input className="input" type="number" min={0} max={100} value={b.min} onChange={(e) => setBound(c.id, 'min', +e.target.value)} />
+                          <input className="input" type="number" aria-label={`${c.name} 配比下限`} min={0} max={100} value={b.min} onChange={(e) => setBound(c.id, 'min', +e.target.value)} />
                           <span className="minmax__sep">–</span>
-                          <input className="input" type="number" min={0} max={100} value={b.max} onChange={(e) => setBound(c.id, 'max', +e.target.value)} />
+                          <input className="input" type="number" aria-label={`${c.name} 配比上限`} min={0} max={100} value={b.max} onChange={(e) => setBound(c.id, 'max', +e.target.value)} />
                         </div>
                       </div>
                     );
@@ -580,9 +580,9 @@ function GlobalBound({ onApply }: { onApply: (min: number, max: number) => void 
     <div className="row gap-10 wrap items-end" style={{ padding: '10px 12px', background: 'var(--surface-inset)', borderRadius: 'var(--r)', border: '1px solid var(--line)' }}>
       <span className="text-xs text-mute">批量设置 (%)</span>
       <div className="minmax" style={{ width: 170 }}>
-        <input className="input" type="number" min={0} max={100} value={min} onChange={(e) => setMin(+e.target.value)} />
+        <input className="input" type="number" aria-label="批量配比下限" min={0} max={100} value={min} onChange={(e) => setMin(+e.target.value)} />
         <span className="minmax__sep">–</span>
-        <input className="input" type="number" min={0} max={100} value={max} onChange={(e) => setMax(+e.target.value)} />
+        <input className="input" type="number" aria-label="批量配比上限" min={0} max={100} value={max} onChange={(e) => setMax(+e.target.value)} />
       </div>
       <button className="btn btn--sm btn--ghost" onClick={() => onApply(min, max)}>
         <Icon name="refresh" size={14} /> 应用到全部
@@ -695,17 +695,16 @@ function ResultsView({
         s && (
           <>
             {/* readouts */}
-            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 14 }}>
+            <div className="grid blend-readouts">
               <MiniReadout label="吨煤成本" value={`¥${fixed(s.total_price, 1)}`} tone="ember" />
               <MiniReadout label="综合热值" value={fixed(heatDisplay(s.total_heat, heatUnit), 2)} unit={heatUnit} />
               <MiniReadout label="灰分" value={fixed(s.total_ash, 1)} unit="%" />
               <MiniReadout label="挥发分" value={fixed(s.total_volatile, 1)} unit="%" />
               <MiniReadout label="固定碳" value={fixed(s.total_fixed_carbon, 1)} unit="%" />
               <MiniReadout label="硫分" value={fixed(s.total_sulfur, 2)} unit="%" />
-              <MiniReadout label="质量偏离分" value={fixed(s.quality_penalty, 3)} tone="cyan" />
             </div>
 
-            <div className="text-xs text-mute">质量偏离分按灰分、硫分及挥发分/固定碳窗口计算；分数越低越符合模型偏好，不是燃烧风险概率。</div>
+            <div className="blend-quality"><span className="pill pill--cyan">质量偏离分 {fixed(s.quality_penalty, 3)}</span><p>按灰分、硫分及挥发分/固定碳窗口计算；分数越低越符合模型偏好，不是燃烧风险概率。</p></div>
 
             {/* charts row */}
             <div className="grid grid--3">

@@ -59,7 +59,7 @@ def persistent_app_secret(data_dir: Path) -> str:
     return secret
 
 
-from app.services.database_service import _database_state, _online_backup, _migrate_and_seed
+from app.services.database_service import _database_state, _online_backup, _migrate_database
 
 
 @contextmanager
@@ -133,7 +133,7 @@ def create_desktop_app(data_dir=None, token=None, resources=None):
         raise ValueError('CBOS_DESKTOP_TOKEN 必须为每次启动生成的 64 位十六进制令牌')
     data_dir = Path(data_dir).resolve()
     resources = Path(resources).resolve() if resources is not None else resource_root()
-    required_files = ['data/test_coal_datas.csv', 'migrations/alembic.ini', 'migrations/env.py']
+    required_files = ['migrations/alembic.ini', 'migrations/env.py']
     if getattr(sys, 'frozen', False):
         required_files.append('frontend/dist/index.html')
     for required in required_files:
@@ -147,11 +147,10 @@ def create_desktop_app(data_dir=None, token=None, resources=None):
         'SECRET_KEY': persistent_app_secret(data_dir), 'DATA_STORAGE_MODE': 'sqlite',
         'DATA_DIR': str(data_dir), 'UPLOAD_FOLDER': str(data_dir / 'uploads'),
         'DATABASE_PATH': str(database), 'SQLALCHEMY_DATABASE_URI': f'sqlite:///{database.as_posix()}',
-        'COAL_DATA_PATH': str(resources / 'data' / 'test_coal_datas.csv'),
         'SPA_DIST_DIR': str(resources / 'frontend' / 'dist'), 'AUTO_INITIALIZE_COAL_DATA': False,
     })
     try:
-        _migrate_and_seed(app, resources, database)
+        _migrate_database(app, resources, database)
     except Exception:
         with app.app_context():
             db.session.remove()

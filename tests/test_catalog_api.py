@@ -73,6 +73,8 @@ def test_readonly_user_can_read_and_export_but_cannot_import(client):
     client.environ_base['HTTP_X_CSRF_TOKEN'] = login.get_json()['csrf_token']
     assert client.get('/api/catalog').status_code == 200
     assert client.get('/api/catalog/export').status_code == 200
+    assert client.get('/api/catalog/test-data?format=xlsx').status_code == 200
+    assert client.get('/api/catalog/test-data?format=csv').status_code == 200
     assert client.post('/api/catalog', json={'name': 'forbidden', 'type': '烟煤'}).status_code == 403
     assert client.post('/api/catalog/import/preview', json={'text': 'x'}).status_code == 403
 

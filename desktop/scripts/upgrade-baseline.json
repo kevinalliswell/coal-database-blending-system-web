@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "version": "2.0.0",
+  "tag": "v2.0.0",
+  "commit": "1a19ff0638bb67dd4ac210efa3926ee6b9878225",
+  "repository": "kevinalliswell/coal-database-blending-system-web",
+  "release_id": 392321864,
+  "asset": {
+    "id": 576184875,
+    "name": "CBOS-2.0.0-windows-x64-setup.exe",
+    "size": 171707049,
+    "sha256": "91b788d8ffdb67a33a57ae8833a347aec04010cf4900a2f1f86c748bbef9f086"
+  }
+}

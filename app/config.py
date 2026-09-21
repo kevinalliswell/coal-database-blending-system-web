@@ -45,7 +45,6 @@ class Config:
     BASE_DIR = str(BASE_DIR_PATH)
     DATA_DIR = str(DATA_PATH)
     UPLOAD_FOLDER = str(DATA_PATH / "uploads")
-    COAL_DATA_PATH = str(BASE_DIR_PATH / "data" / "test_coal_datas.csv")
     DATABASE_PATH = str(DEFAULT_DB_PATH)
     # 构建后的单页应用目录（frontend/dist）。生产由 Flask 直接托管此目录。
     SPA_DIST_DIR = str(BASE_DIR_PATH / "frontend" / "dist")

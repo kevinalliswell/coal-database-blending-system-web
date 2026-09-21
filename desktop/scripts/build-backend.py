@@ -58,7 +58,6 @@ def main() -> None:
     required = [
         DESKTOP / "backend_entry.py",
         ROOT / "frontend" / "dist" / "index.html",
-        ROOT / "data" / "test_coal_datas.csv",
         ROOT / "migrations" / "alembic.ini",
     ]
     for path in required:

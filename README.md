@@ -20,11 +20,15 @@ Web 示例：
 
 ```sh
 docker run -d --name cbos -p 127.0.0.1:5000:5000 -v cbos-data:/app/data \
-  ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.0
+  ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.1
 docker exec -it cbos flask --app wsgi users create-admin --username admin
 ```
 
 系统没有默认密码。Windows 首次启动创建管理员；Web 通过服务器 CLI 初始化。
+
+新安装为**空煤库**。可以录入实际化验报告，或在“煤质数据库”下载六煤测试表（3 种无烟煤 + 3 种烟煤，XLSX/CSV），预览确认后再导入。
+
+侧边菜单可展开显示文字，也可折叠；“使用帮助”提供离线目录和操作示例。2.0.1 的界面与空煤库变化见 [更新说明](docs/UI_UPDATE_2.0.1.md)。
 
 ## 文档
 
@@ -41,6 +45,7 @@ docker exec -it cbos flask --app wsgi users create-admin --username admin
 | [Windows 指南](docs/WINDOWS_DESKTOP.md) | 安装、备份、构建与验证 |
 | [升级与发布说明](docs/UPGRADE_2.0.md) | 不兼容变化、恢复与资产核验 |
 | [发布操作规程](docs/RELEASE.md) | 固定提交验收、发布门禁与中断恢复 |
+| [CI 与自托管运行器](docs/CI.md) | Mac 原生检查、Linux/Windows 验收、失败诊断 |
 | [CHANGELOG](CHANGELOG.md) | 各版本变更 |
 
 ## 开发验证

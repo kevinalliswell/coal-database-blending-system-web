@@ -4,6 +4,8 @@
 
 React/Vite SPA 通过同源 `/api` 访问 Flask。数据库由 SQLAlchemy 管理，Alembic 执行版本迁移。Docker 在 Gunicorn 启动前单次迁移；HTTP 请求不再建表或种子导入。
 
+Web、桌面及开发 mock 的新煤库均为空，原有煤种 CSV 不进入 Docker / Windows 运行资源。六煤合成测试数据只由下载接口生成，经过普通导入预览和确认后才写入数据库。
+
 Windows 使用 Electron 沙箱渲染进程，主进程代理 `cbos://app` 到随机 loopback 端口的冻结 Python 后端。每次启动生成通信令牌，后端验证后才路由请求；登录会话 cookie 只存在主进程内存，退出应用即丢失。应用持久密钥与通信令牌独立。渲染进程不获得 Node、数据库路径访问权或登录 cookie。
 
 ## 数据流

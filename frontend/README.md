@@ -33,7 +33,7 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
-默认以**演示模式**启动（`VITE_USE_MOCK=true`）：内置真实的包钢煤种种子数据 + 一个合成的 NSGA-II 求解引擎与置换比计算器，**无需启动 Python 后端**即可体验全部流程（选煤、约束、求解、Pareto 前沿、置换比、历史）。演示数据写入浏览器 `localStorage`。
+完整功能使用真实 Python 后端（`VITE_USE_MOCK=false`），先按根 README 初始化并创建管理员。新煤库为空，可从煤质数据库主动下载并导入六煤测试表。旧 mock 引擎仅供开发单元测试，初始煤列表同样为空，不作为完整功能演示环境；此前保存到浏览器 `localStorage` 的记录不会被自动删除。
 
 环境开关按模式拆分：`.env.development`（开发，默认 `VITE_USE_MOCK=true`）、`.env.production`（生产构建，默认 `VITE_USE_MOCK=false`）、`.env`（共享的 `VITE_API_TARGET`）。
 
@@ -75,7 +75,7 @@ frontend/src
 │   ├── api.ts                # API 客户端（真实后端 / 演示引擎切换）
 │   ├── constants.ts          # 约束默认值、GA 档位、字段元数据
 │   ├── format.ts             # 数值/时间格式化
-│   └── mock/                 # 种子数据 + 合成 NSGA-II 求解与置换比引擎
+│   └── mock/                 # 空初始煤库 + 开发用合成求解引擎
 ├── components/
 │   ├── ui/                   # 设计系统组件：Icon / Toast / Overlay / Chart / bits
 │   ├── blending/             # 混煤图表 + 算法参数抽屉

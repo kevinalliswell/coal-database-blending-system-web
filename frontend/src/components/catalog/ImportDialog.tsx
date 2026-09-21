@@ -3,6 +3,7 @@ import { Modal } from '../ui/Overlay';
 import { apiData } from '../../lib/http';
 import { basisLabel, heatLabel, type Assay, type Issue } from '../../lib/v2';
 import { metricFields, metricLabel } from './fields';
+import { TestDataDownloads } from './TestDataDownloads';
 
 interface Preview {
   headers: {name: string; suggested: string | null; ambiguous: boolean}[];
@@ -47,6 +48,7 @@ export function ImportDialog({onClose, onSaved}: {onClose: () => void; onSaved: 
   }
   return <Modal open title="导入批次化验" subtitle="先确认列映射与原始基准，再一次性写入全部有效行" maxWidth={1150} onClose={onClose}>
     <fieldset className="catalog-form catalog-fieldset" disabled={busy}>
+      <TestDataDownloads />
       <div className="catalog-form-grid"><label>选择 CSV / XLSX 文件<input type="file" accept=".csv,.xlsx" onChange={e => {reset(); setFile(e.target.files?.[0] || null); setText('');}} /></label><p className="catalog-note">每次最多 2,000 行、10 MB。同名煤种同批次会追加新修订。原记录不会被覆盖。</p></div>
       <label>或粘贴表格（首行为表头）<textarea rows={5} disabled={Boolean(file)} value={text} placeholder={'煤种名称\t煤种类型\t批次编号\t灰分\n样煤\t烟煤\tB001\t12.5'} onChange={e => {reset(); setText(e.target.value);}} /></label>
       {file && <button className="btn btn--ghost" onClick={() => {setFile(null); reset();}}>清除文件，改为粘贴</button>}

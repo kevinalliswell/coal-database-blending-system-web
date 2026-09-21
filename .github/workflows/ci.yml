@@ -10,11 +10,145 @@ permissions:
   contents: read
 
 jobs:
+  macos-arm64:
+    name: macOS ARM64 regression
+    # A persistent personal machine must not execute fork or bot PR code.
+    if: >-
+      github.repository == 'kevinalliswell/coal-database-blending-system-web' &&
+      github.event.repository.private == true &&
+      (github.event_name != 'pull_request' ||
+       (github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.user.type == 'User'))
+    runs-on: [self-hosted, macOS, ARM64, local-mac, coal-web]
+    timeout-minutes: 30
+    concurrency:
+      group: macos-ci-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ github.workspace }}/ci/${{ github.run_id }}-${{ github.run_attempt }}
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PYTHONUTF8: '1'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          path: ci/${{ github.run_id }}-${{ github.run_attempt }}
+          persist-credentials: false
+      - name: Verify native platform and create isolated Python environment
+        run: |
+          test "$RUNNER_OS" = macOS
+          test "$RUNNER_ARCH" = ARM64
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          /opt/homebrew/bin/python3.12 -c 'import platform, sys; assert sys.version_info[:2] == (3, 12); assert platform.machine() == "arm64"'
+          /opt/homebrew/bin/python3.12 -c 'import shutil; assert shutil.disk_usage(".").free >= 3 * 1024**3, "Mac CI requires at least 3 GiB free"'
+          /opt/homebrew/bin/python3.12 -m venv .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          architecture: arm64
+      - name: Record runner and tested commit
+        run: |
+          node -e 'if (process.platform !== "darwin" || process.arch !== "arm64" || !process.versions.node.startsWith("22.")) process.exit(1)'
+          mkdir -p outputs/ci
+          python - <<'PY'
+          import json, os, platform, runpy, subprocess
+          from pathlib import Path
+          version = runpy.run_path('app/__version__.py')['__version__']
+          identity = {
+              'runner': os.environ['RUNNER_NAME'], 'os': os.environ['RUNNER_OS'],
+              'arch': os.environ['RUNNER_ARCH'], 'commit': os.environ['EXPECTED_SHA'],
+              'version': version, 'python': platform.python_version(),
+              'node': subprocess.check_output(['node', '--version'], text=True).strip(),
+              'run_id': os.environ['GITHUB_RUN_ID'], 'attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+          }
+          Path('outputs/ci/identity.json').write_text(json.dumps(identity, indent=2) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('## Native macOS regression identity\n\n')
+              for key, value in identity.items():
+                  summary.write(f'- {key}: `{value}`\n')
+          PY
+          VERSION=$(python -c 'import runpy; print(runpy.run_path("app/__version__.py")["__version__"])')
+          python scripts/release.py verify-tree --sha "$EXPECTED_SHA" --version "$VERSION"
+      - name: Install isolated Python and frontend dependencies
+        run: |
+          python -m pip install -r requirements-dev.txt
+          npm --prefix frontend ci
+      - name: Python regressions
+        id: pytest
+        run: python -m pytest -q --junitxml=outputs/ci/pytest.xml
+      - name: Frontend regressions
+        id: frontend_tests
+        run: node --test frontend/tests/*.test.mjs | tee outputs/ci/frontend.tap
+      - name: Desktop-shell regressions
+        id: shell_tests
+        run: node --test desktop/tests/*.test.cjs | tee outputs/ci/desktop-shell.tap
+      - name: Frontend type check
+        id: typecheck
+        run: npm --prefix frontend run typecheck
+      - name: Build web and offline frontend
+        id: frontend_build
+        env:
+          VITE_USE_MOCK: 'false'
+        run: |
+          npm --prefix frontend run build
+          npm --prefix frontend run build -- --mode desktop
+      - name: Record regression evidence in Actions logs and summary
+        if: always()
+        env:
+          CHECK_RESULTS: >-
+            {"python":"${{ steps.pytest.outcome }}",
+             "frontend":"${{ steps.frontend_tests.outcome }}",
+             "desktop_shell":"${{ steps.shell_tests.outcome }}",
+             "typecheck":"${{ steps.typecheck.outcome }}",
+             "web_and_offline_build":"${{ steps.frontend_build.outcome }}"}
+        run: |
+          python - <<'PY'
+          import json, os, re, xml.etree.ElementTree as ET
+          from pathlib import Path
+          report_dir = Path('outputs/ci')
+          identity = report_dir / 'identity.json'
+          evidence = {'identity': json.loads(identity.read_text()) if identity.exists() else None,
+                      'checks': json.loads(os.environ['CHECK_RESULTS']), 'test_reports': {}}
+          junit = report_dir / 'pytest.xml'
+          if junit.exists():
+              suites = list(ET.parse(junit).getroot().iter('testsuite'))
+              evidence['test_reports']['python'] = {
+                  key: sum(int(suite.get(key, '0')) for suite in suites)
+                  for key in ('tests', 'failures', 'errors', 'skipped')}
+          else:
+              evidence['test_reports']['python'] = None
+          for name in ('frontend', 'desktop-shell'):
+              tap = report_dir / f'{name}.tap'
+              evidence['test_reports'][name] = {
+                  key: int(value) for key, value in
+                  re.findall(r'^# (tests|pass|fail|cancelled|skipped|todo) (\d+)\s*$', tap.read_text(), re.M)
+              } if tap.exists() else None
+          print('CI_VALIDATION_JSON=' + json.dumps(evidence, ensure_ascii=False))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('\n## Regression evidence\n\n')
+              summary.write('Missing reports are null; check outcomes and the job conclusion determine success.\n\n')
+              summary.write('```json\n' + json.dumps(evidence, indent=2) + '\n```\n')
+          PY
+      - name: Clean this run's checkout and dependencies
+        if: always()
+        working-directory: ${{ github.workspace }}
+        env:
+          RUN_DIRECTORY: ci/${{ github.run_id }}-${{ github.run_attempt }}
+        run: rm -rf -- "${GITHUB_WORKSPACE:?}/${RUN_DIRECTORY:?}"
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -48,6 +182,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: docker-ci-${{ github.sha }}
+          name: docker-ci-${{ github.event.pull_request.head.sha || github.sha }}
           path: docker-ci-evidence/
           if-no-files-found: warn

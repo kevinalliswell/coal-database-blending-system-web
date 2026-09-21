@@ -32,21 +32,27 @@ concurrency:
 jobs:
   windows-x64:
     runs-on: windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 55
     env:
       PYTHONUTF8: '1'
       # Playwright controls the Chromium embedded in Electron; no browser download.
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
+      - name: Require disposable hosted environment for installation and GUI acceptance
+        run: |
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
+            throw 'Installation, upgrade, uninstall and GUI acceptance require an independent disposable test environment.'
+          }
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.build_sha || github.sha }}
+          ref: ${{ inputs.build_sha || github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Resolve exact build identity
         id: identity
         env:
-          EXPECTED_SHA: ${{ inputs.build_sha }}
+          EXPECTED_SHA: ${{ inputs.build_sha || github.event.pull_request.head.sha || github.sha }}
           EXPECTED_VERSION: ${{ inputs.version }}
         run: |
           $sha = (git rev-parse HEAD).Trim()
@@ -122,43 +128,24 @@ jobs:
         run: npm run dist:win
         working-directory: desktop
 
-      - name: Install NSIS package in a path with spaces and Chinese characters
-        id: install
-        run: |
-          $installers = @(Get-ChildItem 'desktop/dist/*-setup.exe' -File)
-          if ($installers.Count -ne 1) { throw 'Expected one NSIS installer' }
-          $installDir = Join-Path $env:RUNNER_TEMP 'CBOS 安装测试'
-          # NSIS requires /D last and unquoted, including when the path contains spaces.
-          $installer = Start-Process -FilePath $installers[0].FullName -ArgumentList "/S /D=$installDir" -PassThru -Wait
-          if ($installer.ExitCode -ne 0) { throw "Installer failed: $($installer.ExitCode)" }
-          if (!(Test-Path (Join-Path $installDir 'CBOS.exe'))) { throw 'Installed CBOS.exe is missing' }
-          "CBOS_INSTALL_DIR=$installDir" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-          $dataDir = Join-Path $env:LOCALAPPDATA 'CBOS'
-          New-Item -ItemType Directory -Force $dataDir | Out-Null
-          'preserve-user-data' | Set-Content (Join-Path $dataDir 'uninstall-preservation-check.txt')
+      - name: Fetch and verify the pinned official upgrade baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python desktop/scripts/download-upgrade-baseline.py
+          --output-dir "$env:RUNNER_TEMP/cbos-upgrade-baseline-${{ github.run_id }}-${{ github.run_attempt }}"
 
-      - name: Smoke test installed Electron on Windows
-        run: |
-          $env:CBOS_ELECTRON_EXECUTABLE = Join-Path $env:CBOS_INSTALL_DIR 'CBOS.exe'
-          $env:CBOS_SMOKE_OUTPUT = Join-Path $env:GITHUB_WORKSPACE 'desktop/smoke-output/electron'
-          node desktop/scripts/smoke-electron.cjs
-
-      - name: Uninstall NSIS package without deleting user data
-        if: always() && steps.install.outcome == 'success'
-        run: |
-          $uninstallerPath = Join-Path $env:CBOS_INSTALL_DIR 'Uninstall CBOS.exe'
-          if (!(Test-Path $uninstallerPath)) { throw 'Uninstaller is missing' }
-          $uninstaller = Start-Process -FilePath $uninstallerPath -ArgumentList '/S' -PassThru -Wait
-          if ($uninstaller.ExitCode -ne 0) { throw "Uninstaller failed: $($uninstaller.ExitCode)" }
-          $installedExe = Join-Path $env:CBOS_INSTALL_DIR 'CBOS.exe'
-          for ($attempt = 0; $attempt -lt 15 -and (Test-Path $installedExe); $attempt++) { Start-Sleep -Seconds 1 }
-          if (Test-Path $installedExe) { throw 'Uninstall did not remove CBOS.exe' }
-          $dataProbe = Join-Path $env:LOCALAPPDATA 'CBOS/uninstall-preservation-check.txt'
-          if (!(Test-Path $dataProbe) -or (Get-Content $dataProbe) -ne 'preserve-user-data') {
-            throw 'Uninstall modified user data'
-          }
-          Remove-Item $dataProbe
-          @{ installed=$true; uninstalled=$true; data_preserved=$true } | ConvertTo-Json | Set-Content desktop/smoke-output/installation.json -Encoding utf8
+      - name: Validate fresh install, real in-place upgrade, ZIP launch and database-preserving uninstall
+        env:
+          BUILD_SHA: ${{ steps.identity.outputs.sha }}
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: >-
+          python desktop/scripts/windows-lifecycle.py
+          --installer "desktop/dist/CBOS-$env:VERSION-windows-x64-setup.exe"
+          --zip "desktop/dist/CBOS-$env:VERSION-windows-x64.zip"
+          --baseline "$env:RUNNER_TEMP/cbos-upgrade-baseline-${{ github.run_id }}-${{ github.run_attempt }}"
+          --version $env:VERSION --sha $env:BUILD_SHA
+          --output desktop/smoke-output
 
       - name: Attest successful same-SHA Windows validation
         env:

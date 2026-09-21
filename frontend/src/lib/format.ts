@@ -29,29 +29,39 @@ export function money(v: number | null | undefined, digits = 1): string {
   return `¥${fixed(v, digits)}`;
 }
 
-/** relative time in Chinese, from an ISO / "YYYY-MM-DD HH:mm:ss" string */
+/** Relative time for declared instants; unknown-zone history stays absolute. */
 export function timeAgo(dateStr: string | null | undefined, now = Date.now()): string {
   if (!dateStr) return '—';
   const t = parseDate(dateStr);
-  if (!t) return dateStr;
+  if (t === null) return dateStr;
   const diff = Math.max(0, now - t) / 1000;
   if (diff < 60) return '刚刚';
   if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
   if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
   if (diff < 86400 * 30) return `${Math.floor(diff / 86400)} 天前`;
-  return dateStr.slice(0, 10);
+  return shortDate(dateStr).slice(0, 10);
 }
 
+/**
+ * Parse only timestamps with an explicit zone, preserving that instant.
+ * The API declares SQLite UTC with Z; legacy values without a zone are not
+ * safe to convert, since their database session may have used local time.
+ */
 export function parseDate(s: string): number | null {
-  if (!s) return null;
-  const iso = s.includes('T') ? s : s.replace(' ', 'T');
+  const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(Z|[+-]\d{2}:\d{2})$/.exec(s);
+  if (!match) return null;
+  const iso = `${match[1]}T${match[2]}${match[3]}`;
   const t = Date.parse(iso);
   return Number.isNaN(t) ? null : t;
 }
 
 export function shortDate(s: string | null | undefined): string {
   if (!s) return '—';
-  return s.replace('T', ' ').slice(0, 19);
+  const timestamp = parseDate(s);
+  if (timestamp === null) return s;
+  const date = new Date(timestamp);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 export function clamp(v: number, lo: number, hi: number): number {
