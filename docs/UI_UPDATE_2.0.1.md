@@ -25,6 +25,6 @@ Windows 文档换行符已被统一处理，帮助内容在网页及离线程序
 
 ## 安装与核对
 
-从对应的 [GitHub Release](https://github.com/kevinalliswell/coal-database-blending-system-web/releases/tag/v2.0.1) 获取 Windows 安装包 / ZIP 或 Docker 离线镜像。Windows 资产未签名。安装前核对 `SHA256SUMS.txt`；安装后在“关于”中核对版本和构建标识。
+这些界面改动随 [v2.0.2 正式版本](https://github.com/kevinalliswell/coal-database-blending-system-web/releases/tag/v2.0.2) 交付；v2.0.1 发布中止，原标签保留。请从 v2.0.2 获取 Windows 安装包 / ZIP 或 Docker 离线镜像。Windows 资产未签名。安装前核对 `SHA256SUMS.txt`；安装后在“关于”中核对版本和构建标识。
 
 运行和备份说明见 [Windows 指南](WINDOWS_DESKTOP.md) 和 [Web 部署](DEPLOYMENT.md)，日常操作见 [用户手册](USER_GUIDE.md)。本次不改变煤质换算公式、LP 预检或 NSGA-II 优化目标。

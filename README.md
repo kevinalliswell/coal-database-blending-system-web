@@ -20,7 +20,7 @@ Web 示例：
 
 ```sh
 docker run -d --name cbos -p 127.0.0.1:5000:5000 -v cbos-data:/app/data \
-  ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.1
+  ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.2
 docker exec -it cbos flask --app wsgi users create-admin --username admin
 ```
 
