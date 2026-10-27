@@ -34,6 +34,16 @@ gh workflow run release-on-main.yml --ref main -f version=2.0.0 -f build_sha=完
 
 Release 正文来自 CHANGELOG 对应版本章节，并附 Windows 未签名提示、完整提交、安装包、ZIP、Docker 离线镜像与升级说明链接。
 
+注册表读取同时接受 OCI/Docker 的单镜像 manifest 和镜像索引。传统 Docker 本机镜像 ID 对应配置摘要；containerd 镜像存储也可能返回 manifest 或索引的分发摘要。发布和草稿恢复都要求本机实际 ID 与对应的完整摘要精确相同，不凭版本名或平台名称认定镜像相同。
+
+公开仓库与公开包使用 `delivery_visibility=public`。例如发布已准备好的 2.0.2：
+
+```bash
+gh workflow run release-on-main.yml --ref main -f version=2.0.2 -f build_sha=完整40位SHA -f delivery_visibility=public
+```
+
+v2.0.1 在新 Runner 的 OCI 索引校验处中止；其附注标签保留，未完成的草稿不作为正式下载。修复及原界面改造由 v2.0.2 一并交付。
+
 ## 发布资产
 
 - `CBOS-VERSION-windows-x64-setup.exe`
@@ -52,7 +62,7 @@ Release 正文来自 CHANGELOG 对应版本章节，并附 Windows 未签名提�
 - 已有标签必须为附注标签且直接指向同一提交。不同 SHA 或轻量标签均停止流程，绝不强制移动。
 - 固定镜像尚未推送时，同 SHA 草稿允许下载核验后重用相同文件，或替换重新构建但内容不同的草稿文件。已发布资产禁止替换。
 - 固定镜像已推送、Release 仍为草稿时，重试下载**原草稿整套资产**，核对清单 SHA、镜像 digest 和离线 Docker 包加载后的配置摘要。通过后复用原资产继续正式发布，不把本次重新构建的文件混入原版本。
-- Release 已发布时，重试不修改正文、标签或资产；核验现有文件和固定镜像后，只继续尚未完成的 latest 推进。访问范围同样必须与原清单一致。
+- Release 已发布时，重试不修改正文、标签或资产；核验现有文件和固定镜像后，从原离线包恢复并核对完整镜像，再继续尚未完成的 latest 推进。这样新 Runner 也能保留 OCI 索引中的附加 manifest，而不因普通 pull 只取当前平台而丢失内容。访问范围同样必须与原清单一致。
 - 更高版本已成为最新 Release 时，旧版本重试会停止，避免把 latest 降级。
 - 固定版本镜像与原草稿无法对应、散列不匹配、只有固定镜像而没有可验证草稿等情形均停止。保留证据排查，不覆盖原版本。
 

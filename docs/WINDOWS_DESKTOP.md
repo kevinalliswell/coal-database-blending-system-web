@@ -4,7 +4,7 @@ Windows x64 安装包与 ZIP 包含 Electron、Python 后端、前端和帮助�
 
 ## 安装与使用
 
-从 v2.0.1 Release 下载 `CBOS-2.0.1-windows-x64-setup.exe` 或 `CBOS-2.0.1-windows-x64.zip`，按 SHA256SUMS.txt 核对。当前安装包未签名，发布者状态会如实显示在发行说明中。ZIP 完整解压后运行 CBOS.exe。
+从 v2.0.2 Release 下载 `CBOS-2.0.2-windows-x64-setup.exe` 或 `CBOS-2.0.2-windows-x64.zip`，按 SHA256SUMS.txt 核对。当前安装包未签名，发布者状态会如实显示在发行说明中。ZIP 完整解压后运行 CBOS.exe。
 
 首次创建管理员，没有默认密码；以后每次启动登录。新安装的煤库为空，不附带或自动灌入原煤数据库。可在煤库页面下载六煤测试表，预览确认后导入练习，也可用空模板导入真实化验。已有用户记录保留，未知基准不会自动补齐。
 

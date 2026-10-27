@@ -9,7 +9,7 @@
 ```sh
 docker run -d --name cbos -p 127.0.0.1:5000:5000 \
   -v cbos-data:/app/data \
-  ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.1
+  ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.2
 docker logs cbos
 docker exec -it cbos flask --app wsgi users create-admin --username admin
 ```
@@ -24,7 +24,7 @@ docker exec -it cbos flask --app wsgi users create-admin --username admin
 
 ```sh
 docker login ghcr.io -u YOUR_GITHUB_USERNAME
-docker pull ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.1
+docker pull ghcr.io/kevinalliswell/coal-database-blending-system-web:2.0.2
 ```
 
 将 `YOUR_GITHUB_USERNAME` 替换为账号名。按 [GitHub 官方认证说明](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-with-a-personal-access-token-classic) 配置凭据；公开镜像可直接拉取。私有仓库的 Release 安装包需在浏览器中登录获授权账号后下载。

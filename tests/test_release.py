@@ -1,5 +1,6 @@
 """Policy tests exercise immutable release and interrupted-publication boundaries."""
 import importlib.util
+import io
 import json
 from pathlib import Path
 
@@ -9,6 +10,78 @@ spec = importlib.util.spec_from_file_location('cbos_release', Path(__file__).par
 release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
 SHA = 'a' * 40
+OCI_INDEX = 'application/vnd.oci.image.index.v1+json'
+DOCKER_LIST = 'application/vnd.docker.distribution.manifest.list.v2+json'
+CONFIG_DIGEST = 'sha256:' + 'c' * 64
+DISTRIBUTION_DIGEST = 'sha256:' + 'd' * 64
+
+
+@pytest.mark.parametrize('media_type', [OCI_INDEX, DOCKER_LIST])
+def test_registry_reads_index_without_mistaking_content_negotiation_for_absence(monkeypatch, media_type):
+    from urllib.error import HTTPError
+    document = {'schemaVersion': 2, 'mediaType': media_type, 'manifests': [
+        {'digest': 'sha256:' + 'e' * 64, 'platform': {'os': 'linux', 'architecture': 'amd64'}},
+        {'digest': 'sha256:' + 'f' * 64, 'platform': {'os': 'unknown', 'architecture': 'unknown'}},
+    ]}
+    monkeypatch.setenv('GITHUB_ACTOR', 'test-actor')
+    monkeypatch.setenv('GH_TOKEN', 'test-token')
+
+    def urlopen(request, **kwargs):
+        if request.full_url.startswith('https://ghcr.io/token?'):
+            return io.BytesIO(b'{"token":"registry-token"}')
+        assert request.full_url == 'https://ghcr.io/v2/o/r/manifests/2.0.2'
+        assert request.get_header('Authorization') == 'Bearer registry-token'
+        accepted = {value.strip().split(';', 1)[0] for value in request.get_header('Accept', '').split(',')}
+        # GHCR returns 404 when the tag exists but its index media type is excluded.
+        if media_type not in accepted:
+            raise HTTPError(request.full_url, 404, 'Unsupported manifest representation', {}, None)
+        response = io.BytesIO(json.dumps(document).encode())
+        response.headers = {'Docker-Content-Digest': DISTRIBUTION_DIGEST}
+        return response
+
+    monkeypatch.setattr(release, 'urlopen', urlopen)
+    assert release.registry_manifest('ghcr.io/o/r', '2.0.2') == (document, DISTRIBUTION_DIGEST)
+
+
+@pytest.mark.parametrize('document,local_id', [
+    pytest.param({'mediaType': OCI_INDEX, 'manifests': []}, DISTRIBUTION_DIGEST, id='containerd-index'),
+    pytest.param({'config': {'digest': CONFIG_DIGEST}}, DISTRIBUTION_DIGEST, id='manifest-distribution-id'),
+    pytest.param({'config': {'digest': CONFIG_DIGEST}}, CONFIG_DIGEST, id='legacy-config-id'),
+])
+@pytest.mark.parametrize('already_pushed', [False, True])
+def test_fixed_image_accepts_exact_distribution_or_legacy_config_identity(monkeypatch, document, local_id, already_pushed):
+    commands = []
+
+    def run(*args, **kwargs):
+        commands.append(args)
+        return local_id if args[:3] == ('docker', 'image', 'inspect') else ''
+
+    def registry(*args):
+        pushed = ('docker', 'push', 'ghcr.io/o/r:2.0.2') in commands
+        return (document, DISTRIBUTION_DIGEST) if already_pushed or pushed else None
+
+    monkeypatch.setattr(release, 'run', run)
+    monkeypatch.setattr(release, 'registry_manifest', registry)
+    assert release.publish_fixed_image('ghcr.io/o/r', '2.0.2') == DISTRIBUTION_DIGEST
+    assert commands.count(('docker', 'push', 'ghcr.io/o/r:2.0.2')) == (0 if already_pushed else 1)
+
+
+@pytest.mark.parametrize('remote', [None,
+    ({'config': {'digest': CONFIG_DIGEST}}, DISTRIBUTION_DIGEST),
+    ({'mediaType': OCI_INDEX, 'manifests': [{'digest': 'sha256:' + 'b' * 64}]}, DISTRIBUTION_DIGEST),
+])
+def test_push_cannot_succeed_with_missing_or_different_registry_identity(monkeypatch, remote):
+    commands = []
+
+    def run(*args, **kwargs):
+        commands.append(args)
+        return 'sha256:' + 'b' * 64
+
+    monkeypatch.setattr(release, 'run', run)
+    monkeypatch.setattr(release, 'registry_manifest', lambda *args: remote if ('docker', 'push', 'ghcr.io/o/r:2.0.2') in commands else None)
+    with pytest.raises(ValueError, match='differs from the tested Docker image'):
+        release.publish_fixed_image('ghcr.io/o/r', '2.0.2')
+    assert commands.count(('docker', 'push', 'ghcr.io/o/r:2.0.2')) == 1
 
 
 def test_draft_lookup_does_not_depend_on_published_by_tag_endpoint():
@@ -68,10 +141,14 @@ def test_windows_installer_exit_alone_does_not_count_as_validation(tmp_path):
         release.validation_report('windows', '2.0.0', SHA, tmp_path)
 
 
-def test_fixed_image_different_bytes_are_never_pushed(monkeypatch):
+@pytest.mark.parametrize('document', [
+    {'config': {'digest': 'sha256:old'}},
+    {'mediaType': OCI_INDEX, 'manifests': [{'digest': 'sha256:new'}]},
+])
+def test_fixed_image_different_bytes_are_never_pushed(monkeypatch, document):
     commands = []
     monkeypatch.setattr(release, 'run', lambda *args, **kw: commands.append(args) or 'sha256:new')
-    monkeypatch.setattr(release, 'registry_manifest', lambda *args: ({'config': {'digest': 'sha256:old'}}, 'sha256:manifest'))
+    monkeypatch.setattr(release, 'registry_manifest', lambda *args: (document, 'sha256:manifest'))
     with pytest.raises(ValueError, match='not be overwritten'):
         release.publish_fixed_image('ghcr.io/o/r', '2.0.0')
     assert not any('push' in command for command in commands)
@@ -79,6 +156,7 @@ def test_fixed_image_different_bytes_are_never_pushed(monkeypatch):
 
 def test_public_retry_never_uploads_replaces_or_retags(monkeypatch, tmp_path):
     operations = []
+    commands = []
     class FakeGitHub:
         def __init__(self, _repo): pass
         def release(self, tag): return {'draft': False, 'id': 1}
@@ -89,13 +167,38 @@ def test_public_retry_never_uploads_replaces_or_retags(monkeypatch, tmp_path):
     monkeypatch.setattr(release, 'GitHub', FakeGitHub)
     monkeypatch.setattr(release, 'verify_downloads', lambda *args: {'delivery_visibility': 'private', 'image': {'name': 'ghcr.io/o/r', 'digest': 'sha256:old'}})
     monkeypatch.setattr(release, 'registry_manifest', lambda *args, **kwargs: ({}, 'sha256:old'))
+    monkeypatch.setattr(release, 'run', lambda *args, **kwargs: commands.append(args) or 'sha256:old')
     monkeypatch.setattr(release, 'promote_latest', lambda *args: operations.append(args))
     monkeypatch.setattr(release, 'prepare_assets', lambda *args: pytest.fail('must not rebuild public assets'))
     release.publish('2.0.0', SHA, 'o/r', tmp_path, tmp_path)
     assert operations == [('ghcr.io/o/r', '2.0.0', 'sha256:old')]
+    # A fresh daemon must restore all index children (including attestations)
+    # from the original verified archive before it can promote the same index.
+    assert commands[0][:3] == ('docker', 'load', '--input')
+    assert commands[0][3].endswith('cbos-web-2.0.0-docker-image.tar.gz')
 
 
-def test_resume_after_fixed_image_push_reuses_original_draft_assets(monkeypatch, tmp_path):
+def test_published_retry_rejects_archive_that_does_not_match_fixed_image(monkeypatch, tmp_path):
+    class FakeGitHub:
+        def __init__(self, _repo): pass
+        def release(self, _tag): return {'draft': False, 'id': 1}
+    monkeypatch.setattr(release, 'preflight', lambda *args: {'image': 'ghcr.io/o/r'})
+    monkeypatch.setattr(release, 'GitHub', FakeGitHub)
+    monkeypatch.setattr(release, 'verify_downloads', lambda *args: {
+        'delivery_visibility': 'public', 'image': {'name': 'ghcr.io/o/r', 'digest': DISTRIBUTION_DIGEST}})
+    monkeypatch.setattr(release, 'verify_image_access', lambda *args: None)
+    monkeypatch.setattr(release, 'registry_manifest', lambda *args: ({'mediaType': OCI_INDEX}, DISTRIBUTION_DIGEST))
+    monkeypatch.setattr(release, 'run', lambda *args, **kwargs: 'sha256:wrong-archive')
+    monkeypatch.setattr(release, 'promote_latest', lambda *args: pytest.fail('wrong archive must never promote latest'))
+    with pytest.raises(ValueError, match='archive does not match'):
+        release.publish('2.0.0', SHA, 'o/r', tmp_path, tmp_path, 'public')
+
+
+@pytest.mark.parametrize('document,local_id', [
+    ({'config': {'digest': 'sha256:old-config'}}, 'sha256:old-config'),
+    ({'mediaType': OCI_INDEX, 'manifests': []}, 'sha256:old'),
+])
+def test_resume_after_fixed_image_push_reuses_original_draft_assets(monkeypatch, tmp_path, document, local_id):
     operations = []
     class FakeGitHub:
         def __init__(self, _repo): pass
@@ -109,8 +212,8 @@ def test_resume_after_fixed_image_push_reuses_original_draft_assets(monkeypatch,
     monkeypatch.setattr(release, 'preflight', lambda *args: {'image': 'ghcr.io/o/r', 'delivery_visibility': 'private'})
     monkeypatch.setattr(release, 'GitHub', FakeGitHub)
     monkeypatch.setattr(release, 'release_notes', lambda *args: 'Finalized version notes')
-    monkeypatch.setattr(release, 'registry_manifest', lambda *args, **kwargs: ({'config': {'digest': 'sha256:old-config'}}, 'sha256:old'))
-    monkeypatch.setattr(release, 'run', lambda *args, **kwargs: 'sha256:old-config')
+    monkeypatch.setattr(release, 'registry_manifest', lambda *args, **kwargs: (document, 'sha256:old'))
+    monkeypatch.setattr(release, 'run', lambda *args, **kwargs: local_id)
     monkeypatch.setattr(release, 'verify_downloads', lambda *args: {'delivery_visibility': 'private', 'image': {'name': 'ghcr.io/o/r', 'digest': 'sha256:old'}})
     monkeypatch.setattr(release, 'promote_latest', lambda *args: operations.append(('latest', *args)))
     monkeypatch.setattr(release, 'prepare_assets', lambda *args: pytest.fail('must reuse the draft matching the already-pushed fixed image'))

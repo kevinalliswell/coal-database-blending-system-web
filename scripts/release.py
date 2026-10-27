@@ -314,7 +314,7 @@ def prepare_assets(version, commit, repository, inputs, destination):
 
 
 def registry_manifest(image, tag, *, anonymous=False):
-    """Return an authenticated manifest and immutable distribution digest, or 404."""
+    """Return a manifest/index and its immutable distribution digest, or 404."""
     import base64
     from urllib.parse import urlencode
     repository = image.removeprefix('ghcr.io/')
@@ -326,7 +326,8 @@ def registry_manifest(image, tag, *, anonymous=False):
     with urlopen(Request('https://ghcr.io/token?' + query, headers=headers), timeout=60) as response:
         token = json.load(response)['token']
     request = Request(f'https://ghcr.io/v2/{repository}/manifests/{tag}', headers={'Authorization': 'Bearer ' + token,
-        'Accept': 'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'})
+        'Accept': 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, '
+                  'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'})
     try:
         with urlopen(request, timeout=120) as response:
             return json.load(response), response.headers['Docker-Content-Digest']
@@ -336,15 +337,21 @@ def registry_manifest(image, tag, *, anonymous=False):
         raise RuntimeError(f'Registry check failed: HTTP {error.code}') from None
 
 
+def image_matches(remote, local_id):
+    # Classic Docker reports the config ID; containerd may report the complete
+    # manifest/index ID. Both comparisons bind the exact content, never a tag.
+    return local_id in (remote[1], remote[0].get('config', {}).get('digest'))
+
+
 def publish_fixed_image(image, version):
     local_id = run('docker', 'image', 'inspect', f'{image}:{version}', '--format', '{{.Id}}')
     existing = registry_manifest(image, version)
-    if existing and existing[0].get('config', {}).get('digest') != local_id:
+    if existing and not image_matches(existing, local_id):
         raise ValueError('Fixed version image already exists with different bytes; it will not be overwritten')
     if not existing:
         run('docker', 'push', f'{image}:{version}')
         existing = registry_manifest(image, version)
-    if not existing or existing[0].get('config', {}).get('digest') != local_id:
+    if not existing or not image_matches(existing, local_id):
         raise ValueError('Registry image differs from the tested Docker image')
     return existing[1]
 
@@ -423,8 +430,15 @@ def publish(version, commit, repository, inputs, destination, delivery_visibilit
         # Retry after publication only verifies existing immutable content and finishes promotion.
         with tempfile.TemporaryDirectory() as temporary:
             manifest = verify_downloads(github, release, temporary, (version, commit))
-        verify_manifest_delivery(manifest, image, delivery_visibility)
-        verify_image_access(github, image, version, manifest['image']['digest'], delivery_visibility)
+            verify_manifest_delivery(manifest, image, delivery_visibility)
+            verify_image_access(github, image, version, manifest['image']['digest'], delivery_visibility)
+            # A normal pull can omit index children such as attestations. Restore
+            # the verified archive so a clean runner can push the complete index.
+            run('docker', 'load', '--input', str(Path(temporary) / f'cbos-web-{version}-docker-image.tar.gz'))
+            loaded = run('docker', 'image', 'inspect', f'{image}:{version}', '--format', '{{.Id}}')
+            fixed = registry_manifest(image, version)
+            if not fixed or not image_matches(fixed, loaded):
+                raise ValueError('Published offline Docker archive does not match the fixed registry image')
         promote_latest(image, version, manifest['image']['digest'])
         return
     verify_delivery_visibility(github, image, delivery_visibility, allow_missing_package=True)
@@ -442,7 +456,7 @@ def publish(version, commit, repository, inputs, destination, delivery_visibilit
                 raise ValueError('Existing fixed image does not match the saved draft manifest')
             run('docker', 'load', '--input', str(Path(temporary) / f'cbos-web-{version}-docker-image.tar.gz'))
             loaded = run('docker', 'image', 'inspect', f'{image}:{version}', '--format', '{{.Id}}')
-            if loaded != existing_image[0].get('config', {}).get('digest'):
+            if not image_matches(existing_image, loaded):
                 raise ValueError('Draft offline Docker archive does not match the fixed registry image')
         github.api(f'/releases/{release["id"]}', {'body': release_notes(version, commit, repository)}, method='PATCH')
         finish_release(github, release, version, commit, image, existing_image[1], delivery_visibility)
