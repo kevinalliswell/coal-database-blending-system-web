@@ -205,3 +205,14 @@ def test_login_throttle_and_bad_role_shape(access_app):
     for _ in range(8):
         assert client.post('/api/auth/login', json={'username': 'missing', 'password': 'wrong'}, headers=headers).status_code == 401
     assert client.post('/api/auth/login', json={'username': 'missing', 'password': 'wrong'}, headers=headers).status_code == 429
+
+
+def test_login_throttle_from_one_address_does_not_lock_out_others(access_app):
+    bootstrap(access_app)
+    attacker = access_app.test_client(); attacker.environ_base['REMOTE_ADDR'] = '203.0.113.9'
+    token = {'X-CSRF-Token': attacker.get('/api/auth/session').get_json()['csrf_token']}
+    for _ in range(8):
+        assert attacker.post('/api/auth/login', json={'username': 'admin', 'password': 'wrong'}, headers=token).status_code == 401
+    assert attacker.post('/api/auth/login', json={'username': 'admin', 'password': 'Testpassword123!'}, headers=token).status_code == 429
+    owner = access_app.test_client(); owner.environ_base['REMOTE_ADDR'] = '198.51.100.7'
+    login(owner)

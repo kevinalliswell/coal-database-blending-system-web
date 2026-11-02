@@ -36,7 +36,7 @@ class SystemSettings(db.Model):
 
 
 class LoginAttempt(db.Model):
-    """A bounded per-name throttle also applies to names that do not exist."""
+    """A bounded per-name, per-client throttle also applies to names that do not exist."""
     __tablename__ = 'login_attempt'
     key = db.Column(db.String(64), primary_key=True)
     failures = db.Column(db.Integer, nullable=False, default=0)

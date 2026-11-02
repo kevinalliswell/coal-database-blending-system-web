@@ -171,10 +171,12 @@ def change_password(user, password, current_password=None, require_current=False
     db.session.commit()
 
 
-def authenticate(username, password):
+def authenticate(username, password, client=''):
     # Never reflect whether the account exists, is disabled or is locked.
+    # The throttle is per name *and* client address, so failures sent from one
+    # address cannot lock the account out for everyone else.
     supplied = username.lower() if isinstance(username, str) else ''
-    key = hashlib.sha256(supplied.encode()).hexdigest()
+    key = hashlib.sha256(f'{supplied}\0{client or ""}'.encode()).hexdigest()
     now = int(time.time())
     db.session.query(LoginAttempt).filter(LoginAttempt.window_start < now - 900).delete(synchronize_session=False)
     attempt = db.session.get(LoginAttempt, key)

@@ -140,7 +140,9 @@ def setup():
 @bp.post('/auth/login')
 def login():
     data = _body()
-    user = authenticate(data.get('username'), data.get('password'))
+    # remote_addr is the direct peer; X-Forwarded-For is not trusted here, so a
+    # client cannot rotate it to escape the throttle.
+    user = authenticate(data.get('username'), data.get('password'), request.remote_addr)
     _new_session(user)
     return jsonify(_session_response())
 
