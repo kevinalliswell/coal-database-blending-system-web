@@ -36,10 +36,10 @@ Release 正文来自 CHANGELOG 对应版本章节，并附 Windows 未签名提�
 
 注册表读取同时接受 OCI/Docker 的单镜像 manifest 和镜像索引。传统 Docker 本机镜像 ID 对应配置摘要；containerd 镜像存储也可能返回 manifest 或索引的分发摘要。发布和草稿恢复都要求本机实际 ID 与对应的完整摘要精确相同，不凭版本名或平台名称认定镜像相同。
 
-公开仓库与公开包使用 `delivery_visibility=public`。例如发布已准备好的 2.0.2：
+公开仓库与公开包使用 `delivery_visibility=public`。例如发布已准备好的 2.0.3：
 
 ```bash
-gh workflow run release-on-main.yml --ref main -f version=2.0.2 -f build_sha=完整40位SHA -f delivery_visibility=public
+gh workflow run release-on-main.yml --ref main -f version=2.0.3 -f build_sha=完整40位SHA -f delivery_visibility=public
 ```
 
 v2.0.1 在新 Runner 的 OCI 索引校验处中止；其附注标签保留，未完成的草稿不作为正式下载。修复及原界面改造由 v2.0.2 一并交付。
